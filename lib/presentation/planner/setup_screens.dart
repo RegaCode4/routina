@@ -373,7 +373,7 @@ class _PlannerProfileSetupState extends State<PlannerProfileSetup> {
         ),
         const SizedBox(height: NeoSpace.page),
         Text(
-          'Profil contoh tersedia selama sesi ini.',
+          'Nama tampilan digunakan di profil lokal.',
           style: NeoType.caption.copyWith(color: NeoColors.muted),
         ),
       ],
@@ -404,6 +404,7 @@ class _ActiveHoursState extends State<PlannerActiveHours> {
   late bool _sunday = widget.repository.profile?.sundayFirst ?? false;
   bool _submitted = false;
   bool _saving = false;
+  bool _saveFailed = false;
 
   Future<void> _editDay(int day) async {
     final interval = await Navigator.of(context).push<ActiveInterval>(
@@ -429,44 +430,62 @@ class _ActiveHoursState extends State<PlannerActiveHours> {
         _hours.values.any((interval) => !interval.isValid)) {
       return;
     }
-    setState(() => _saving = true);
-    _writeProfile(widget.repository.profile?.notifications ?? false);
-    if (widget.settings) {
-      Navigator.of(context).pop(true);
-      return;
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    try {
+      await _writeProfile(widget.repository.profile?.notifications ?? false);
+      if (!mounted) return;
+      if (!widget.settings) {
+        final notifications = await Navigator.of(
+          context,
+        ).push<bool>(MaterialPageRoute(builder: (_) => const _ProfileSaved()));
+        if (!mounted) return;
+        if (notifications != null) await _writeProfile(notifications);
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (_) {
+      if (mounted) setState(() => _saveFailed = true);
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
-    final notifications = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const _ProfileSaved()));
-    if (!mounted) return;
-    if (notifications != null) _writeProfile(notifications);
-    Navigator.of(context).pop(true);
   }
 
-  void _writeProfile(bool notifications) {
-    widget.repository.saveProfile(
-      PreviewProfile(
-        name: widget.name,
-        activeHours: _hours,
-        study: _study,
-        workout: _workout,
-        sundayFirst: _sunday,
-        notifications: notifications,
-      ),
-    );
-  }
+  Future<void> _writeProfile(bool notifications) =>
+      widget.repository.saveProfile(
+        PreviewProfile(
+          name: widget.name,
+          activeHours: _hours,
+          study: _study,
+          workout: _workout,
+          sundayFirst: _sunday,
+          notifications: notifications,
+        ),
+      );
 
   @override
   Widget build(BuildContext context) => PreviewPage(
     title: 'Jam aktif',
     footer: NeoButton(
-      label: widget.settings ? 'Simpan jam aktif' : 'Simpan dan buka Home',
+      label: _saveFailed
+          ? 'Coba simpan lagi'
+          : widget.settings
+          ? 'Simpan jam aktif'
+          : 'Simpan dan buka Home',
+      loading: _saving,
       onPressed: _saving ? null : _save,
     ),
     body: ListView(
       padding: const EdgeInsets.all(NeoSpace.page),
       children: [
         const Text('Kapan kamu aktif?', style: NeoType.display),
+        if (_saveFailed)
+          const PreviewNotice(
+            title: 'Profil belum dapat disimpan',
+            message: 'Coba simpan lagi untuk melanjutkan.',
+            warning: true,
+          ),
         const SizedBox(height: NeoSpace.xs),
         const Text(
           'Smart Scheduling memakai rentang ini saat mencari slot yang cocok.',

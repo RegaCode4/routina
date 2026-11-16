@@ -11,7 +11,7 @@ abstract interface class PlannerPreviewRepository {
 
   Future<void> load(PreviewSurface surface);
   void rememberStep(int step);
-  void saveProfile(PreviewProfile profile);
+  Future<void> saveProfile(PreviewProfile profile);
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope});
   void setEventState(String id, PreviewEventState state, {SeriesScope? scope});
   void reassignCategory(String previous, String next, {String? color});

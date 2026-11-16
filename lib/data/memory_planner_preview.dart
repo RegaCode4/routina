@@ -58,7 +58,7 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   void rememberStep(int step) => _step = step;
 
   @override
-  void saveProfile(PreviewProfile profile) => _profile = profile;
+  Future<void> saveProfile(PreviewProfile profile) async => _profile = profile;
 
   @override
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope}) {

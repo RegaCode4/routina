@@ -15,6 +15,21 @@ import 'package:routina/presentation/demo/demo_widgets.dart';
 import 'package:routina/presentation/demo/statistics.dart';
 import 'package:routina/presentation/demo/trash.dart';
 
+Future<bool> _saveProfile(
+  BuildContext context,
+  DemoSession demo,
+  PreviewProfile profile,
+) async {
+  try {
+    await demo.planner.saveProfile(profile);
+  } catch (_) {
+    if (context.mounted) demoFeedback(context, 'Profil belum dapat disimpan.');
+    return false;
+  }
+  if (context.mounted) demo.change(() {});
+  return true;
+}
+
 class DemoProfile extends StatelessWidget {
   const DemoProfile(this.demo, {super.key});
   final DemoSession demo;
@@ -77,19 +92,21 @@ class DemoProfile extends StatelessWidget {
                 initial: profile.name,
               );
               if (!context.mounted || name == null) return;
-              demo.change(
-                () => demo.planner.saveProfile(
-                  PreviewProfile(
-                    name: name,
-                    activeHours: profile.activeHours,
-                    study: profile.study,
-                    workout: profile.workout,
-                    sundayFirst: profile.sundayFirst,
-                    notifications: profile.notifications,
-                  ),
+              final saved = await _saveProfile(
+                context,
+                demo,
+                PreviewProfile(
+                  name: name,
+                  activeHours: profile.activeHours,
+                  study: profile.study,
+                  workout: profile.workout,
+                  sundayFirst: profile.sundayFirst,
+                  notifications: profile.notifications,
                 ),
               );
-              demoFeedback(context, 'Profil disimpan untuk sesi ini.');
+              if (context.mounted && saved) {
+                demoFeedback(context, 'Profil disimpan.');
+              }
             },
           ),
           DemoRow(
@@ -107,7 +124,7 @@ class DemoProfile extends StatelessWidget {
               );
               if (context.mounted && saved == true) {
                 demo.change(() => demo.revision++);
-                demoFeedback(context, 'Jam aktif disimpan untuk sesi ini.');
+                demoFeedback(context, 'Jam aktif disimpan.');
               }
             },
           ),
@@ -193,19 +210,21 @@ class _CalendarSettings extends StatelessWidget {
                 confirmLabel: 'Ubah awal minggu',
               );
               if (!context.mounted || approved != true) return;
-              demo.change(
-                () => demo.planner.saveProfile(
-                  PreviewProfile(
-                    name: profile.name,
-                    activeHours: profile.activeHours,
-                    study: profile.study,
-                    workout: profile.workout,
-                    sundayFirst: next == 'Minggu',
-                    notifications: profile.notifications,
-                  ),
+              final saved = await _saveProfile(
+                context,
+                demo,
+                PreviewProfile(
+                  name: profile.name,
+                  activeHours: profile.activeHours,
+                  study: profile.study,
+                  workout: profile.workout,
+                  sundayFirst: next == 'Minggu',
+                  notifications: profile.notifications,
                 ),
               );
-              demoFeedback(context, 'Awal minggu diubah.');
+              if (context.mounted && saved) {
+                demoFeedback(context, 'Awal minggu diubah.');
+              }
             },
           ),
           PreviewField(
@@ -270,18 +289,18 @@ class DemoNotifications extends StatelessWidget {
   const DemoNotifications(this.demo, {super.key});
   final DemoSession demo;
 
-  void _global(bool enabled) {
+  Future<bool> _global(BuildContext context, bool enabled) {
     final profile = demo.planner.profile!;
-    demo.change(
-      () => demo.planner.saveProfile(
-        PreviewProfile(
-          name: profile.name,
-          activeHours: profile.activeHours,
-          study: profile.study,
-          workout: profile.workout,
-          sundayFirst: profile.sundayFirst,
-          notifications: enabled,
-        ),
+    return _saveProfile(
+      context,
+      demo,
+      PreviewProfile(
+        name: profile.name,
+        activeHours: profile.activeHours,
+        study: profile.study,
+        workout: profile.workout,
+        sundayFirst: profile.sundayFirst,
+        notifications: enabled,
       ),
     );
   }
@@ -312,8 +331,8 @@ class DemoNotifications extends StatelessWidget {
           'Pengingat bisa dilihat di Home. Kelola izin perangkat di pengaturan sistem saat fitur terhubung.',
     );
     if (!context.mounted || result == null) return;
-    demo.change(() => demo.permission = result);
-    _global(result == 'Diizinkan');
+    final saved = await _global(context, result == 'Diizinkan');
+    if (context.mounted && saved) demo.change(() => demo.permission = result);
   }
 
   Future<void> _quietTime(BuildContext context, {required bool start}) async {
@@ -377,7 +396,9 @@ class DemoNotifications extends StatelessWidget {
           value:
               demo.permission == 'Diizinkan' &&
               demo.planner.profile!.notifications,
-          onChanged: demo.permission == 'Diizinkan' ? _global : null,
+          onChanged: demo.permission == 'Diizinkan'
+              ? (value) => _global(context, value)
+              : null,
         ),
         const Text('Jenis pengingat', style: NeoType.section),
         NeoCard(
