@@ -110,12 +110,14 @@ class EventEditor extends StatefulWidget {
     required this.draft,
     this.full = false,
     this.scope,
+    this.categories,
     super.key,
   });
   final PlannerPreviewRepository repository;
   final EventDraft draft;
   final bool full;
   final SeriesScope? scope;
+  final Map<String, String>? categories;
 
   @override
   State<EventEditor> createState() => _EventEditorState();
@@ -267,6 +269,7 @@ class _EventEditorState extends State<EventEditor> {
           repository: widget.repository,
           draft: _draft,
           full: true,
+          categories: widget.categories,
         ),
       ),
     );
@@ -498,13 +501,14 @@ class _EventEditorState extends State<EventEditor> {
                 'Kategori',
                 [
                   'Tanpa kategori',
-                  'Kuliah',
-                  'Belajar',
-                  'Kegiatan',
-                  'Kesehatan',
+                  ...widget.categories?.keys ??
+                      ['Kuliah', 'Belajar', 'Kegiatan', 'Kesehatan'],
                 ],
-                (value) =>
-                    _draft.category = value == 'Tanpa kategori' ? '' : value,
+                (value) {
+                  _draft.category = value == 'Tanpa kategori' ? '' : value;
+                  _draft.categoryColor =
+                      widget.categories?[value] ?? _draft.categoryColor;
+                },
               ),
             ),
             const SizedBox(height: NeoSpace.md),

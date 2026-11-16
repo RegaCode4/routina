@@ -34,6 +34,7 @@ void main() {
   };
   runApp(
     RoutinaApp(
+      previewScenario: scenario,
       repository: MemoryPlannerPreview(
         today: today,
         profile:

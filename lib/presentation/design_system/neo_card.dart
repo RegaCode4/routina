@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 
-enum NeoCardTone { plain, highlighted, warning, selected, accent }
+enum NeoCardTone { plain, highlighted, warning, selected, accent, yellow }
 
 class NeoCard extends StatelessWidget {
   const NeoCard({
@@ -27,6 +27,7 @@ class NeoCard extends StatelessWidget {
       NeoCardTone.warning => NeoColors.coralTint,
       NeoCardTone.selected => NeoColors.blueTint,
       NeoCardTone.accent => NeoColors.blue,
+      NeoCardTone.yellow => NeoColors.yellow,
     };
     final shape = RoundedRectangleBorder(
       borderRadius: emphasis ? NeoRadius.hero : NeoRadius.card,

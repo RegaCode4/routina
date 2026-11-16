@@ -344,7 +344,7 @@ class _PlannerProfileSetupState extends State<PlannerProfileSetup> {
   Future<void> _openHours() async {
     final ready = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _ActiveHours(
+        builder: (_) => PlannerActiveHours(
           repository: widget.repository,
           name: _name.text.trim(),
         ),
@@ -381,15 +381,21 @@ class _PlannerProfileSetupState extends State<PlannerProfileSetup> {
   );
 }
 
-class _ActiveHours extends StatefulWidget {
-  const _ActiveHours({required this.repository, required this.name});
+class PlannerActiveHours extends StatefulWidget {
+  const PlannerActiveHours({
+    required this.repository,
+    required this.name,
+    this.settings = false,
+    super.key,
+  });
   final PlannerPreviewRepository repository;
   final String name;
+  final bool settings;
   @override
-  State<_ActiveHours> createState() => _ActiveHoursState();
+  State<PlannerActiveHours> createState() => _ActiveHoursState();
 }
 
-class _ActiveHoursState extends State<_ActiveHours> {
+class _ActiveHoursState extends State<PlannerActiveHours> {
   late final _hours = Map<int, ActiveInterval>.of(
     widget.repository.profile?.activeHours ?? {},
   );
@@ -425,6 +431,10 @@ class _ActiveHoursState extends State<_ActiveHours> {
     }
     setState(() => _saving = true);
     _writeProfile(widget.repository.profile?.notifications ?? false);
+    if (widget.settings) {
+      Navigator.of(context).pop(true);
+      return;
+    }
     final notifications = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const _ProfileSaved()));
@@ -450,7 +460,7 @@ class _ActiveHoursState extends State<_ActiveHours> {
   Widget build(BuildContext context) => PreviewPage(
     title: 'Jam aktif',
     footer: NeoButton(
-      label: 'Simpan dan buka Home',
+      label: widget.settings ? 'Simpan jam aktif' : 'Simpan dan buka Home',
       onPressed: _saving ? null : _save,
     ),
     body: ListView(
@@ -504,12 +514,13 @@ class _ActiveHoursState extends State<_ActiveHours> {
         _preference('Belajar', _study, (value) => _study = value),
         const SizedBox(height: NeoSpace.sm),
         _preference('Workout', _workout, (value) => _workout = value),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Minggu dimulai hari Minggu'),
-          value: _sunday,
-          onChanged: (value) => setState(() => _sunday = value),
-        ),
+        if (!widget.settings)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Minggu dimulai hari Minggu'),
+            value: _sunday,
+            onChanged: (value) => setState(() => _sunday = value),
+          ),
       ],
     ),
   );

@@ -11,11 +11,21 @@ import 'package:routina/presentation/planner/event_detail.dart';
 import 'package:routina/presentation/planner/event_editor.dart';
 import 'package:routina/presentation/planner/home_screen.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
-import 'package:routina/presentation/planner/setup_screens.dart';
+import 'package:routina/presentation/demo/demo_session.dart';
+import 'package:routina/presentation/demo/demo_widgets.dart';
+import 'package:routina/presentation/demo/routines.dart';
+import 'package:routina/presentation/demo/settings.dart';
+import 'package:routina/presentation/demo/statistics.dart';
+import 'package:routina/presentation/demo/tasks.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({required this.repository, super.key});
+  const AppShell({
+    required this.repository,
+    this.previewScenario = '',
+    super.key,
+  });
   final PlannerPreviewRepository repository;
+  final String previewScenario;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -27,6 +37,16 @@ class _AppShellState extends State<AppShell> {
   DateTime? _requestedDay;
   CalendarView _requestedView = CalendarView.month;
   int _calendarSelection = 0;
+  late final _demo = DemoSession(widget.repository, widget.previewScenario)
+    ..addListener(_refresh);
+
+  void _refresh() => setState(() {});
+
+  @override
+  void dispose() {
+    _demo.dispose();
+    super.dispose();
+  }
 
   void _calendar(DateTime day, {CalendarView view = CalendarView.month}) =>
       setState(() {
@@ -37,7 +57,15 @@ class _AppShellState extends State<AppShell> {
       });
 
   Future<void> _open(PreviewEvent entry) async {
-    if (entry.kind != PreviewKind.activity) {
+    final task = _demo.taskFor(entry.id);
+    final routine = _demo.routines
+        .where((routine) => routine.id == entry.id)
+        .firstOrNull;
+    if (task != null) {
+      await openDemo<void>(context, DemoTaskDetail(_demo, task.id));
+    } else if (routine != null) {
+      await openDemo<void>(context, DemoRoutineDetail(_demo, routine.id));
+    } else if (entry.kind != PreviewKind.activity) {
       await showNeoBottomSheet<void>(
         context,
         builder: (_) => NeoBottomSheet(
@@ -53,8 +81,11 @@ class _AppShellState extends State<AppShell> {
     } else {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) =>
-              EventDetail(repository: widget.repository, id: entry.id),
+          builder: (_) => EventDetail(
+            repository: widget.repository,
+            id: entry.id,
+            categories: _demo.eventCategories,
+          ),
         ),
       );
     }
@@ -62,6 +93,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _confirm(PreviewEvent entry) async {
+    if (_demo.taskFor(entry.id) != null ||
+        _demo.routines.any((item) => item.id == entry.id)) {
+      await _open(entry);
+      return;
+    }
     final result = await previewChoices(context, 'Bagaimana hasilnya?', [
       PreviewEventState.done,
       PreviewEventState.postponed,
@@ -72,22 +108,8 @@ class _AppShellState extends State<AppShell> {
     if (result != PreviewEventState.done) await _open(entry);
   }
 
-  void _stats() => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      settings: const RouteSettings(name: '/statistik'),
-      builder: (_) =>
-          const PreviewPage(title: 'Statistik', body: _Unavailable()),
-    ),
-  );
-
-  Future<void> _profile() async {
-    await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => PlannerProfileSetup(repository: widget.repository),
-      ),
-    );
-    if (mounted) setState(() {});
-  }
+  void _stats() =>
+      openDemo<void>(context, DemoStatistics(_demo), route: '/statistik');
 
   Future<void> _activity([DateTime? day]) async {
     final saved = await Navigator.of(context).push<PreviewEvent>(
@@ -95,6 +117,7 @@ class _AppShellState extends State<AppShell> {
         builder: (_) => EventEditor(
           repository: widget.repository,
           draft: EventDraft(date: day),
+          categories: _demo.eventCategories,
         ),
       ),
     );
@@ -112,12 +135,16 @@ class _AppShellState extends State<AppShell> {
         builder: (_) => const _AddOptions(),
       );
       if (!mounted || option == null) return;
-      if (option == _AddOption.activity) {
-        await _activity();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Formulir ${option.title} belum tersedia.')),
-        );
+      switch (option) {
+        case _AddOption.activity:
+          await _activity();
+        case _AddOption.task:
+          await openDemo<void>(context, DemoTaskEditor(_demo, DemoTask()));
+        case _AddOption.routine:
+          await openDemo<void>(
+            context,
+            DemoRoutineEditor(_demo, DemoRoutine()),
+          );
       }
     } finally {
       if (mounted) setState(() => _addOpen = false);
@@ -126,7 +153,6 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final profile = widget.repository.profile!;
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -149,55 +175,9 @@ class _AppShellState extends State<AppShell> {
               onOpen: _open,
               onAdd: _activity,
             ),
-            const Column(
-              children: [
-                AppHeader(title: 'To-Do List'),
-                Expanded(child: _Unavailable()),
-              ],
-            ),
-            const Column(
-              children: [
-                AppHeader(title: 'Rutinitas'),
-                Expanded(child: _Unavailable()),
-              ],
-            ),
-            Column(
-              children: [
-                const AppHeader(title: 'Profil'),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(NeoSpace.page),
-                    children: [
-                      NeoCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              profile.name.isEmpty
-                                  ? 'Profil lokal'
-                                  : profile.name,
-                              style: NeoType.title,
-                            ),
-                            const SizedBox(height: NeoSpace.xs),
-                            Text(
-                              'Awal minggu · ${profile.sundayFirst ? 'Minggu' : 'Senin'}',
-                            ),
-                            Text(
-                              'Pengingat · ${profile.notifications ? 'Aktif pada pratinjau' : 'Nonaktif'}',
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: NeoSpace.md),
-                      NeoButton(
-                        label: 'Ubah profil dan preferensi',
-                        onPressed: _profile,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            DemoTasks(_demo),
+            DemoRoutines(_demo),
+            DemoProfile(_demo),
           ],
         ),
       ),
@@ -214,15 +194,6 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
-}
-
-class _Unavailable extends StatelessWidget {
-  const _Unavailable();
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(NeoSpace.page),
-    children: const [Text('Fitur halaman ini belum tersedia.')],
-  );
 }
 
 enum _AddOption {

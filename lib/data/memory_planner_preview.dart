@@ -114,6 +114,18 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     }
   }
 
+  @override
+  void reassignCategory(String previous, String next, {String? color}) {
+    for (var index = 0; index < _events.length; index++) {
+      final event = _events[index];
+      if (event.options.category != previous) continue;
+      _events[index] = _copy(
+        event,
+        options: event.options.withCategory(next, color: color),
+      );
+    }
+  }
+
   bool _matches(PreviewEvent item, PreviewEvent target, SeriesScope? scope) =>
       target.series != null &&
       item.series == target.series &&
@@ -128,6 +140,7 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     PreviewEventState? state,
     DateTime? start,
     DateTime? end,
+    EventOptions? options,
   }) => PreviewEvent(
     id: id ?? event.id,
     title: event.title,
@@ -135,7 +148,7 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     end: end ?? event.end,
     kind: event.kind,
     state: state ?? event.state,
-    options: event.options,
+    options: options ?? event.options,
     series: series ?? event.series,
     warning: event.warning,
   );

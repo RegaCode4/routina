@@ -6,8 +6,13 @@ import 'package:routina/presentation/design_system/neo_theme.dart';
 import 'package:routina/presentation/planner/setup_screens.dart';
 
 class RoutinaApp extends StatelessWidget {
-  const RoutinaApp({required this.repository, super.key});
+  const RoutinaApp({
+    required this.repository,
+    this.previewScenario = '',
+    super.key,
+  });
   final PlannerPreviewRepository repository;
+  final String previewScenario;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -19,7 +24,7 @@ class RoutinaApp extends StatelessWidget {
     theme: buildNeoTheme(),
     home: PlannerStartup(
       repository: repository,
-      shell: AppShell(repository: repository),
+      shell: AppShell(repository: repository, previewScenario: previewScenario),
     ),
   );
 }

@@ -10,9 +10,15 @@ import 'package:routina/presentation/planner/event_editor.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 
 class EventDetail extends StatefulWidget {
-  const EventDetail({required this.repository, required this.id, super.key});
+  const EventDetail({
+    required this.repository,
+    required this.id,
+    this.categories,
+    super.key,
+  });
   final PlannerPreviewRepository repository;
   final String id;
+  final Map<String, String>? categories;
   @override
   State<EventDetail> createState() => _EventDetailState();
 }
@@ -35,6 +41,7 @@ class _EventDetailState extends State<EventDetail> {
           repository: widget.repository,
           full: true,
           scope: scope,
+          categories: widget.categories,
           draft: replacement
               ? EventDraft(title: event.title)
               : EventDraft.fromEvent(event),

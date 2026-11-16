@@ -77,6 +77,21 @@ class EventOptions {
   final String zone;
   final int before;
   final int after;
+
+  EventOptions withCategory(String next, {String? color}) => EventOptions(
+    availability: availability,
+    category: next,
+    categoryColor: color ?? categoryColor,
+    recurrence: recurrence,
+    reminders: reminders,
+    description: description,
+    location: location,
+    note: note,
+    link: link,
+    zone: zone,
+    before: before,
+    after: after,
+  );
 }
 
 class PreviewEvent {

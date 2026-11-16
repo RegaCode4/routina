@@ -170,6 +170,7 @@ class _WidgetGalleryState extends State<WidgetGallery> {
                               NeoCardTone.warning => 'Kartu peringatan',
                               NeoCardTone.selected => 'Kartu terpilih',
                               NeoCardTone.accent => 'Kartu utama',
+                              NeoCardTone.yellow => 'Kartu aksen kuning',
                             }, style: NeoType.item),
                           ),
                         ),

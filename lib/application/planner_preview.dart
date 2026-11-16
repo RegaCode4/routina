@@ -14,6 +14,7 @@ abstract interface class PlannerPreviewRepository {
   void saveProfile(PreviewProfile profile);
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope});
   void setEventState(String id, PreviewEventState state, {SeriesScope? scope});
+  void reassignCategory(String previous, String next, {String? color});
 }
 
 List<ScheduleWarning> previewWarnings(
