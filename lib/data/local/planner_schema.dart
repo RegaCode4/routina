@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 2;
+const plannerSchemaVersion = 3;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -296,5 +296,18 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
         BEGIN SELECT RAISE(ABORT, 'Historical outcome is immutable'); END
         ''');
     }
+  }
+  if (from < 3 && to >= 3) {
+    await db.execute('''
+      ALTER TABLE profiles ADD COLUMN onboarding_completed INTEGER NOT NULL
+      DEFAULT 1 CHECK (onboarding_completed IN (0, 1))
+      ''');
+    await db.execute('''
+      ALTER TABLE profiles ADD COLUMN onboarding_step INTEGER NOT NULL
+      DEFAULT 0 CHECK (onboarding_step BETWEEN 0 AND 2)
+      ''');
+    await db.execute(
+      "ALTER TABLE profiles ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'",
+    );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -473,7 +474,15 @@ class _DemoTaskEditorState extends State<DemoTaskEditor> {
   late final draft = widget.draft;
   late bool full = widget.full;
   String? error;
-  final zones = const ['WIB', 'WITA', 'WIT', 'Ikuti waktu lokal'];
+  final zones = TimeMode.values.map(timeModeLabel).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    if (draft.id.isEmpty) {
+      draft.zone = timeModeLabel(widget.demo.preferences.deadlineTimeMode);
+    }
+  }
 
   Future<void> _changeDate() async {
     final value = await pickPreviewDate(

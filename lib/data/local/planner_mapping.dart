@@ -124,6 +124,9 @@ final _profile = _Table<Profile>(
     'quiet_end_min': value.quietHours?.endMinute,
     'active_hours': _writeHours(value.activeHours),
     'activity_preferences': jsonEncode(value.activityPreferences),
+    'onboarding_completed': _bool(value.onboardingCompleted),
+    'onboarding_step': value.onboardingStep,
+    'preferences': _writePreferences(value.preferences),
   },
   (meta, row) => Profile(
     meta,
@@ -132,6 +135,9 @@ final _profile = _Table<Profile>(
         ? null
         : row.number('notifications_enabled') == 1,
     weekStartsOn: row.optionalNumber('week_starts_on'),
+    onboardingCompleted: row.number('onboarding_completed') == 1,
+    onboardingStep: row.number('onboarding_step'),
+    preferences: _readPreferences(row.text('preferences')),
     defaultBuffer: row.duration('default_buffer_us'),
     quietHours: row['quiet_start_min'] == null
         ? null
@@ -145,6 +151,48 @@ final _profile = _Table<Profile>(
             .cast<String, String>(),
   ),
 );
+
+String _writePreferences(PlannerPreferences value) => jsonEncode({
+  'calendarZoneId': value.calendarZoneId,
+  'eventTimeMode': value.eventTimeMode.name,
+  'routineTimeMode': value.routineTimeMode.name,
+  'deadlineTimeMode': value.deadlineTimeMode.name,
+  'quietEnabled': value.quietEnabled,
+  'reminderTypes': {
+    for (final entry in value.reminderTypes.entries)
+      entry.key.name: entry.value,
+  },
+  'quietExceptions': value.quietExceptions.map((kind) => kind.name).toList(),
+  'quietExceptionsEnabled': value.quietExceptionsEnabled,
+  'backupReminderDays': value.backupReminderDays,
+});
+
+PlannerPreferences _readPreferences(String source) {
+  final values = jsonDecode(source) as Map<String, dynamic>;
+  TimeMode mode(String key, TimeMode fallback) =>
+      TimeMode.values.where((mode) => mode.name == values[key]).firstOrNull ??
+      fallback;
+  final reminderTypes =
+      values['reminderTypes'] as Map<String, dynamic>? ?? const {};
+  final quietExceptions =
+      values['quietExceptions'] as List<dynamic>? ?? const [];
+  return PlannerPreferences(
+    calendarZoneId: values['calendarZoneId'] as String?,
+    eventTimeMode: mode('eventTimeMode', TimeMode.originalZone),
+    routineTimeMode: mode('routineTimeMode', TimeMode.localWallTime),
+    deadlineTimeMode: mode('deadlineTimeMode', TimeMode.originalZone),
+    quietEnabled: values['quietEnabled'] as bool?,
+    reminderTypes: {
+      for (final kind in ReminderKind.values)
+        if (reminderTypes[kind.name] case final bool enabled) kind: enabled,
+    },
+    quietExceptions: ReminderKind.values
+        .where((kind) => quietExceptions.contains(kind.name))
+        .toSet(),
+    quietExceptionsEnabled: values['quietExceptionsEnabled'] as bool? ?? false,
+    backupReminderDays: values['backupReminderDays'] as int?,
+  );
+}
 
 final _category = _Table<Category>(
   'categories',

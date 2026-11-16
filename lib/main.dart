@@ -57,6 +57,7 @@ void main() {
                       },
                     ),
               onboardingStep: scenario == 'onboarding-resume' ? 1 : 0,
+              seedCategories: scenario != 'categories-empty',
               fixture:
                   PreviewFixture.values
                       .where((fixture) => fixture.name == scenario)

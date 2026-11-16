@@ -185,6 +185,8 @@ class PlannerOnboarding extends StatefulWidget {
 
 class _PlannerOnboardingState extends State<PlannerOnboarding> {
   late int _step = widget.repository.onboardingStep.clamp(0, 2);
+  bool _savingStep = false;
+  bool _stepFailed = false;
   static const _slides = [
     (
       'Atur hari dalam satu tempat',
@@ -202,21 +204,33 @@ class _PlannerOnboardingState extends State<PlannerOnboarding> {
     ),
     (
       'Bawa rencanamu ke mana saja',
-      'Data contoh tersedia offline. Backup terenkripsi akan tersedia di fase terkait.',
+      'Profil dan pengaturan tersimpan di perangkat dan bisa digunakan tanpa internet.',
       'Backup terenkripsi',
       Icons.lock_outline,
       NeoCardTone.warning,
     ),
   ];
 
-  void _select(int step) {
-    widget.repository.rememberStep(step);
-    setState(() => _step = step);
+  Future<void> _select(int step) async {
+    if (_savingStep) return;
+    setState(() {
+      _savingStep = true;
+      _stepFailed = false;
+    });
+    try {
+      await widget.repository.rememberStep(step);
+      if (mounted) setState(() => _step = step);
+    } catch (_) {
+      if (mounted) setState(() => _stepFailed = true);
+    } finally {
+      if (mounted) setState(() => _savingStep = false);
+    }
   }
 
   Future<void> _advance() async {
+    if (_savingStep) return;
     if (_step < 2) {
-      _select(_step + 1);
+      await _select(_step + 1);
       return;
     }
     final setup = await Navigator.of(context).push<bool>(
@@ -234,7 +248,8 @@ class _PlannerOnboardingState extends State<PlannerOnboarding> {
       footerSpace: 64,
       footer: NeoButton(
         label: _step == 2 ? 'Siapkan profil' : 'Lanjut',
-        onPressed: _advance,
+        loading: _savingStep,
+        onPressed: _savingStep ? null : _advance,
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: NeoSpace.page),
@@ -246,7 +261,7 @@ class _PlannerOnboardingState extends State<PlannerOnboarding> {
                 : NeoIconButton(
                     icon: Icons.chevron_left,
                     label: 'Kembali',
-                    onPressed: () => _select(_step - 1),
+                    onPressed: _savingStep ? null : () => _select(_step - 1),
                   ),
           ),
           Padding(
@@ -292,6 +307,14 @@ class _PlannerOnboardingState extends State<PlannerOnboarding> {
                   message,
                   style: NeoType.body.copyWith(color: NeoColors.muted),
                 ),
+                if (_stepFailed) ...[
+                  const SizedBox(height: NeoSpace.sm),
+                  const PreviewNotice(
+                    title: 'Langkah belum tersimpan',
+                    message: 'Coba lagi untuk melanjutkan.',
+                    warning: true,
+                  ),
+                ],
                 const SizedBox(height: NeoSpace.section),
                 Row(
                   children: [
@@ -399,8 +422,12 @@ class _ActiveHoursState extends State<PlannerActiveHours> {
   late final _hours = Map<int, ActiveInterval>.of(
     widget.repository.profile?.activeHours ?? {},
   );
-  late String _study = widget.repository.profile?.study ?? 'Sore';
-  late String _workout = widget.repository.profile?.workout ?? 'Pagi';
+  late String _study = widget.repository.profile?.study ?? '';
+  late String _workout = widget.repository.profile?.workout ?? '';
+  late String _other = widget.repository.profile?.other ?? '';
+  late final _categoryTimes = Map<String, String>.of(
+    widget.repository.profile?.categoryTimes ?? {},
+  );
   late bool _sunday = widget.repository.profile?.sundayFirst ?? false;
   bool _submitted = false;
   bool _saving = false;
@@ -454,11 +481,13 @@ class _ActiveHoursState extends State<PlannerActiveHours> {
 
   Future<void> _writeProfile(bool notifications) =>
       widget.repository.saveProfile(
-        PreviewProfile(
+        (widget.repository.profile ?? PreviewProfile()).copyWith(
           name: widget.name,
           activeHours: _hours,
           study: _study,
           workout: _workout,
+          other: _other,
+          categoryTimes: _categoryTimes,
           sundayFirst: _sunday,
           notifications: notifications,
         ),
@@ -476,86 +505,108 @@ class _ActiveHoursState extends State<PlannerActiveHours> {
       loading: _saving,
       onPressed: _saving ? null : _save,
     ),
-    body: ListView(
+    body: SingleChildScrollView(
       padding: const EdgeInsets.all(NeoSpace.page),
-      children: [
-        const Text('Kapan kamu aktif?', style: NeoType.display),
-        if (_saveFailed)
-          const PreviewNotice(
-            title: 'Profil belum dapat disimpan',
-            message: 'Coba simpan lagi untuk melanjutkan.',
-            warning: true,
-          ),
-        const SizedBox(height: NeoSpace.xs),
-        const Text(
-          'Smart Scheduling memakai rentang ini saat mencari slot yang cocok.',
-        ),
-        const SizedBox(height: NeoSpace.page),
-        for (var day = 1; day <= 7; day++) ...[
-          NeoCard(
-            dense: true,
-            onTap: () => _editDay(day),
-            child: Row(
-              children: [
-                Expanded(child: Text(dayNames[day - 1], style: NeoType.item)),
-                Flexible(
-                  child: Text(
-                    _hours[day] == null
-                        ? 'Pilih rentang'
-                        : '${clockLabel(_hours[day]!.start)}–${clockLabel(_hours[day]!.end)}',
-                    style: NeoType.numericCaption,
-                    textAlign: TextAlign.end,
-                  ),
-                ),
-                const Icon(Icons.chevron_right),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Kapan kamu aktif?', style: NeoType.display),
+          if (_saveFailed)
+            const PreviewNotice(
+              title: 'Profil belum dapat disimpan',
+              message: 'Coba simpan lagi untuk melanjutkan.',
+              warning: true,
             ),
-          ),
-          const SizedBox(height: NeoSpace.xxs),
-        ],
-        if (_submitted && _hours.length != 7)
+          const SizedBox(height: NeoSpace.xs),
           const Text(
-            'Lengkapi rentang jam aktif untuk semua hari.',
-            style: TextStyle(color: NeoColors.errorText),
+            'Smart Scheduling memakai rentang ini saat mencari slot yang cocok.',
           ),
-        const SizedBox(height: NeoSpace.xs),
-        Text(
-          'Contoh jam aktif · dapat berbeda untuk setiap hari.',
-          style: NeoType.caption.copyWith(color: NeoColors.muted),
-        ),
-        const SizedBox(height: NeoSpace.xs),
-        NeoButton(
-          label: 'Pakai rentang contoh',
-          variant: NeoButtonVariant.secondary,
-          onPressed: _examples,
-        ),
-        const SizedBox(height: NeoSpace.sm),
-        _preference('Belajar', _study, (value) => _study = value),
-        const SizedBox(height: NeoSpace.sm),
-        _preference('Workout', _workout, (value) => _workout = value),
-        if (!widget.settings)
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Minggu dimulai hari Minggu'),
-            value: _sunday,
-            onChanged: (value) => setState(() => _sunday = value),
+          const SizedBox(height: NeoSpace.page),
+          for (var day = 1; day <= 7; day++) ...[
+            NeoCard(
+              dense: true,
+              onTap: () => _editDay(day),
+              child: Row(
+                children: [
+                  Expanded(child: Text(dayNames[day - 1], style: NeoType.item)),
+                  Flexible(
+                    child: Text(
+                      _hours[day] == null
+                          ? 'Pilih rentang'
+                          : '${clockLabel(_hours[day]!.start)}–${clockLabel(_hours[day]!.end)}',
+                      style: NeoType.numericCaption,
+                      textAlign: TextAlign.end,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+            ),
+            const SizedBox(height: NeoSpace.xxs),
+          ],
+          if (_submitted && _hours.length != 7)
+            const Text(
+              'Lengkapi rentang jam aktif untuk semua hari.',
+              style: TextStyle(color: NeoColors.errorText),
+            ),
+          const SizedBox(height: NeoSpace.xs),
+          Text(
+            'Jam aktif dapat berbeda setiap hari. Rentang contoh bersifat opsional.',
+            style: NeoType.caption.copyWith(color: NeoColors.muted),
           ),
-      ],
+          const SizedBox(height: NeoSpace.xs),
+          NeoButton(
+            label: 'Pakai rentang contoh',
+            variant: NeoButtonVariant.secondary,
+            onPressed: _examples,
+          ),
+          const SizedBox(height: NeoSpace.sm),
+          _preference('Belajar', _study, (value) => _study = value),
+          const SizedBox(height: NeoSpace.sm),
+          _preference('Workout', _workout, (value) => _workout = value),
+          const SizedBox(height: NeoSpace.sm),
+          _preference('Kegiatan lain', _other, (value) => _other = value),
+          for (final category in widget.repository.categories) ...[
+            const SizedBox(height: NeoSpace.sm),
+            _preference(
+              'kategori ${category.name}',
+              _categoryTimes[category.id] ?? '',
+              (value) {
+                if (value.isEmpty) {
+                  _categoryTimes.remove(category.id);
+                } else {
+                  _categoryTimes[category.id] = value;
+                }
+              },
+            ),
+          ],
+          if (!widget.settings)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Minggu dimulai hari Minggu'),
+              value: _sunday,
+              onChanged: (value) => setState(() => _sunday = value),
+            ),
+        ],
+      ),
     ),
   );
 
   Widget _preference(String name, String value, ValueChanged<String> select) =>
       PreviewField(
         label: 'Preferensi $name',
-        value: value,
+        value: value.isEmpty ? 'Fleksibel' : value,
         onTap: () async {
           final next = await previewChoices(context, 'Preferensi $name', [
+            'Fleksibel',
             'Pagi',
             'Siang',
             'Sore',
             'Malam',
           ], (value) => value);
-          if (mounted && next != null) setState(() => select(next));
+          if (mounted && next != null) {
+            setState(() => select(next == 'Fleksibel' ? '' : next));
+          }
         },
       );
 }
@@ -652,7 +703,7 @@ class _ProfileSavedState extends State<_ProfileSaved> {
       children: [
         if (_permissions) ...[
           NeoButton(
-            label: 'Aktifkan untuk pratinjau',
+            label: 'Aktifkan pengingat di Home',
             onPressed: () => Navigator.pop(context, true),
           ),
           const SizedBox(height: NeoSpace.sm),
@@ -683,8 +734,8 @@ class _ProfileSavedState extends State<_ProfileSaved> {
         const SizedBox(height: NeoSpace.sm),
         Text(
           _permissions
-              ? 'Kamu bisa melewati pratinjau ini. Pengingat tetap dapat dilihat di Home.'
-              : 'Jam aktif dan preferensi siap digunakan selama sesi ini.',
+              ? 'Pengingat di Home bisa diaktifkan sekarang atau nanti di pengaturan.'
+              : 'Jam aktif dan preferensi sudah disimpan di perangkat.',
         ),
       ],
     ),

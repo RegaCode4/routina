@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -31,6 +32,11 @@ const dayNames = [
   'Minggu',
 ];
 const shortDays = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+String timeModeLabel(TimeMode mode) => switch (mode) {
+  TimeMode.originalZone => 'Pertahankan zona asal',
+  TimeMode.localWallTime => 'Ikuti jam lokal',
+};
 
 String dateLabel(DateTime date, {bool year = false, bool long = false}) =>
     '${(long ? dayNames : shortDays)[date.weekday - 1]}, ${date.day} ${monthNames[date.month - 1]}${year ? ' ${date.year}' : ''}';
@@ -268,7 +274,7 @@ Future<DateTime?> pickPreviewDate(
 }
 
 Future<int?> pickPreviewTime(BuildContext context, {int? initial}) async {
-  final value = initial ?? 12 * 60;
+  final value = initial == 1440 ? 1439 : (initial ?? 12 * 60);
   final time = await showTimePicker(
     context: context,
     initialTime: TimeOfDay(hour: value ~/ 60, minute: value % 60),

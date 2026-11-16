@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:routina/domain/preview_event.dart';
+import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
+import 'package:routina/domain/planner_store.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
@@ -14,21 +16,6 @@ import 'package:routina/presentation/demo/demo_session.dart';
 import 'package:routina/presentation/demo/demo_widgets.dart';
 import 'package:routina/presentation/demo/statistics.dart';
 import 'package:routina/presentation/demo/trash.dart';
-
-Future<bool> _saveProfile(
-  BuildContext context,
-  DemoSession demo,
-  PreviewProfile profile,
-) async {
-  try {
-    await demo.planner.saveProfile(profile);
-  } catch (_) {
-    if (context.mounted) demoFeedback(context, 'Profil belum dapat disimpan.');
-    return false;
-  }
-  if (context.mounted) demo.change(() {});
-  return true;
-}
 
 class DemoProfile extends StatelessWidget {
   const DemoProfile(this.demo, {super.key});
@@ -90,19 +77,13 @@ class DemoProfile extends StatelessWidget {
                 'Edit profil',
                 'Nama tampilan',
                 initial: profile.name,
+                requiredInput: false,
               );
               if (!context.mounted || name == null) return;
-              final saved = await _saveProfile(
+              final saved = await saveDemoProfile(
                 context,
                 demo,
-                PreviewProfile(
-                  name: name,
-                  activeHours: profile.activeHours,
-                  study: profile.study,
-                  workout: profile.workout,
-                  sundayFirst: profile.sundayFirst,
-                  notifications: profile.notifications,
-                ),
+                (profile) => profile.copyWith(name: name),
               );
               if (context.mounted && saved) {
                 demoFeedback(context, 'Profil disimpan.');
@@ -187,7 +168,8 @@ class _CalendarSettings extends StatelessWidget {
         body: DemoList([
           const DemoHeading(
             'Sesuaikan kalender',
-            subtitle: 'Atur cara minggu dan slot tampil di pratinjau.',
+            subtitle:
+                'Pilih awal minggu, zona tampilan, dan mode waktu aktivitas.',
           ),
           PreviewField(
             label: 'Awal minggu',
@@ -210,17 +192,10 @@ class _CalendarSettings extends StatelessWidget {
                 confirmLabel: 'Ubah awal minggu',
               );
               if (!context.mounted || approved != true) return;
-              final saved = await _saveProfile(
+              final saved = await saveDemoProfile(
                 context,
                 demo,
-                PreviewProfile(
-                  name: profile.name,
-                  activeHours: profile.activeHours,
-                  study: profile.study,
-                  workout: profile.workout,
-                  sundayFirst: next == 'Minggu',
-                  notifications: profile.notifications,
-                ),
+                (profile) => profile.copyWith(sundayFirst: next == 'Minggu'),
               );
               if (context.mounted && saved) {
                 demoFeedback(context, 'Awal minggu diubah.');
@@ -228,36 +203,59 @@ class _CalendarSettings extends StatelessWidget {
             },
           ),
           PreviewField(
-            label: 'Zona waktu',
-            value: demo.zone,
+            label: 'Zona waktu tampilan',
+            value: profile.preferences.calendarZoneId ?? 'Ikuti zona perangkat',
             onTap: () async {
-              final next = await previewChoices(
-                context,
-                'Zona waktu kalender',
-                [
-                  'Pertahankan zona asal (WIB)',
-                  'Ikuti zona perangkat',
-                  'WITA',
-                  'WIT',
-                ],
-                (value) => value,
-              );
-              if (!context.mounted || next == null || next == demo.zone) return;
+              final next =
+                  await previewChoices(context, 'Zona waktu tampilan', [
+                    'Ikuti zona perangkat',
+                    'Asia/Jakarta',
+                    'Asia/Makassar',
+                    'Asia/Jayapura',
+                  ], (value) => value);
+              if (!context.mounted || next == null) return;
+              final zoneId = next == 'Ikuti zona perangkat' ? null : next;
+              if (zoneId == profile.preferences.calendarZoneId) return;
               final approved = await showNeoDialog(
                 context,
                 title: 'Ubah preferensi zona?',
                 message:
-                    'Pilihan ini berlaku pada tampilan pengaturan pratinjau.',
+                    'Zona tampilan disimpan sebagai preferensi. Deadline dengan mode zona asal tetap memakai zona tersimpan.',
                 confirmLabel: 'Ubah preferensi',
               );
-              if (context.mounted && approved == true) {
-                demo.change(() {
-                  demo.zone = next;
-                  demo.revision++;
-                });
+              if (!context.mounted || approved != true) return;
+              final saved = await saveDemoProfile(
+                context,
+                demo,
+                (profile) => profile.copyWith(
+                  preferences: profile.preferences.copyWith(
+                    calendarZoneId: zoneId,
+                    useDeviceZone: zoneId == null,
+                  ),
+                ),
+              );
+              if (context.mounted && saved) {
                 demoFeedback(context, 'Preferensi zona waktu diubah.');
               }
             },
+          ),
+          _modeField(
+            context,
+            'Mode waktu kegiatan',
+            profile.preferences.eventTimeMode,
+            (prefs, value) => prefs.copyWith(eventTimeMode: value),
+          ),
+          _modeField(
+            context,
+            'Mode waktu rutinitas',
+            profile.preferences.routineTimeMode,
+            (prefs, value) => prefs.copyWith(routineTimeMode: value),
+          ),
+          _modeField(
+            context,
+            'Mode waktu deadline',
+            profile.preferences.deadlineTimeMode,
+            (prefs, value) => prefs.copyWith(deadlineTimeMode: value),
           ),
           PreviewField(
             label: 'Buffer default',
@@ -270,16 +268,44 @@ class _CalendarSettings extends StatelessWidget {
                 min: 0,
                 max: 120,
               );
-              if (context.mounted && minutes != null) {
-                demo.change(() {
-                  demo.buffer = minutes;
-                  demo.revision++;
-                });
-                demoFeedback(context, 'Buffer contoh diubah.');
+              if (!context.mounted || minutes == null) return;
+              final saved = await saveDemoProfile(
+                context,
+                demo,
+                (profile) =>
+                    profile.copyWith(defaultBuffer: Duration(minutes: minutes)),
+              );
+              if (context.mounted && saved) {
+                demoFeedback(context, 'Buffer diubah.');
               }
             },
           ),
         ]),
+      );
+    },
+  );
+
+  Widget _modeField(
+    BuildContext context,
+    String label,
+    TimeMode active,
+    PlannerPreferences Function(PlannerPreferences, TimeMode) update,
+  ) => PreviewField(
+    label: label,
+    value: timeModeLabel(active),
+    onTap: () async {
+      final picked = await previewChoices(
+        context,
+        label,
+        TimeMode.values,
+        timeModeLabel,
+      );
+      if (!context.mounted || picked == null || active == picked) return;
+      await saveDemoProfile(
+        context,
+        demo,
+        (profile) =>
+            profile.copyWith(preferences: update(profile.preferences, picked)),
       );
     },
   );
@@ -289,21 +315,27 @@ class DemoNotifications extends StatelessWidget {
   const DemoNotifications(this.demo, {super.key});
   final DemoSession demo;
 
-  Future<bool> _global(BuildContext context, bool enabled) {
-    final profile = demo.planner.profile!;
-    return _saveProfile(
-      context,
-      demo,
-      PreviewProfile(
-        name: profile.name,
-        activeHours: profile.activeHours,
-        study: profile.study,
-        workout: profile.workout,
-        sundayFirst: profile.sundayFirst,
-        notifications: enabled,
-      ),
-    );
-  }
+  static const _reminderLabels = {
+    ReminderKind.event: 'Kegiatan',
+    ReminderKind.deadline: 'Tenggat tugas',
+    ReminderKind.workSession: 'Sesi pengerjaan',
+    ReminderKind.routine: 'Rutinitas',
+  };
+
+  Future<bool> _global(BuildContext context, bool enabled) => saveDemoProfile(
+    context,
+    demo,
+    (profile) => profile.copyWith(notifications: enabled),
+  );
+
+  Future<bool> _preferences(
+    BuildContext context,
+    PlannerPreferences Function(PlannerPreferences) update,
+  ) => saveDemoProfile(
+    context,
+    demo,
+    (profile) => profile.copyWith(preferences: update(profile.preferences)),
+  );
 
   Future<void> _permission(BuildContext context) async {
     final result = await demoSheet<String>(
@@ -345,13 +377,20 @@ class DemoNotifications extends StatelessWidget {
       demoFeedback(context, 'Jam mulai dan berakhir harus berbeda.');
       return;
     }
-    demo.change(() {
-      if (start) {
-        demo.quietStart = value;
-      } else {
-        demo.quietEnd = value;
-      }
-    });
+    await saveDemoProfile(
+      context,
+      demo,
+      (profile) => profile.copyWith(
+        quietHours: (
+          startMinute: start
+              ? value
+              : profile.quietHours?.startMinute ?? demo.quietStart,
+          endMinute: start
+              ? profile.quietHours?.endMinute ?? demo.quietEnd
+              : value,
+        ),
+      ),
+    );
   }
 
   @override
@@ -393,24 +432,24 @@ class DemoNotifications extends StatelessWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Pengingat global'),
-          value:
-              demo.permission == 'Diizinkan' &&
-              demo.planner.profile!.notifications,
-          onChanged: demo.permission == 'Diizinkan'
-              ? (value) => _global(context, value)
-              : null,
+          subtitle: const Text('Preferensi lokal pengingat.'),
+          value: demo.planner.profile!.notifications,
+          onChanged: (value) => _global(context, value),
         ),
         const Text('Jenis pengingat', style: NeoType.section),
         NeoCard(
           child: Column(
             children: [
-              for (final entry in demo.notificationTypes.entries)
+              for (final entry in _reminderLabels.entries)
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text(entry.key),
-                  value: entry.value,
-                  onChanged: (value) => demo.change(
-                    () => demo.notificationTypes[entry.key] = value,
+                  title: Text(entry.value),
+                  value: demo.preferences.reminderTypes[entry.key] ?? true,
+                  onChanged: (value) => _preferences(
+                    context,
+                    (prefs) => prefs.copyWith(
+                      reminderTypes: {...prefs.reminderTypes, entry.key: value},
+                    ),
                   ),
                 ),
             ],
@@ -429,7 +468,20 @@ class DemoNotifications extends StatelessWidget {
             title: const Text('Quiet Hours'),
             subtitle: const Text('Waktu senyap pengingat'),
             value: demo.quiet,
-            onChanged: (value) => demo.change(() => demo.quiet = value),
+            onChanged: (value) => saveDemoProfile(
+              context,
+              demo,
+              (profile) => profile.copyWith(
+                preferences: profile.preferences.copyWith(quietEnabled: value),
+                quietHours: value
+                    ? profile.quietHours ??
+                          (
+                            startMinute: demo.quietStart,
+                            endMinute: demo.quietEnd,
+                          )
+                    : profile.quietHours,
+              ),
+            ),
           ),
         ),
         if (demo.quiet) ...[
@@ -448,22 +500,26 @@ class DemoNotifications extends StatelessWidget {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Pengecualian per jenis'),
-            value: demo.quietExceptions,
-            onChanged: (value) =>
-                demo.change(() => demo.quietExceptions = value),
+            value: demo.preferences.quietExceptionsEnabled,
+            onChanged: (value) => _preferences(
+              context,
+              (prefs) => prefs.copyWith(quietExceptionsEnabled: value),
+            ),
           ),
-          if (demo.quietExceptions)
-            for (final type in demo.notificationTypes.keys)
+          if (demo.preferences.quietExceptionsEnabled)
+            for (final entry in _reminderLabels.entries)
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(type),
-                value: demo.quietAllowed.contains(type),
-                onChanged: (value) => demo.change(() {
+                title: Text(entry.value),
+                value: demo.preferences.quietExceptions.contains(entry.key),
+                onChanged: (value) => _preferences(context, (prefs) {
+                  final exceptions = {...prefs.quietExceptions};
                   if (value == true) {
-                    demo.quietAllowed.add(type);
+                    exceptions.add(entry.key);
                   } else {
-                    demo.quietAllowed.remove(type);
+                    exceptions.remove(entry.key);
                   }
+                  return prefs.copyWith(quietExceptions: exceptions);
                 }),
               ),
         ],
@@ -476,29 +532,29 @@ class _Categories extends StatelessWidget {
   const _Categories(this.demo);
   final DemoSession demo;
 
-  Future<void> _edit(BuildContext context, [DemoCategory? item]) async {
+  Future<void> _edit(BuildContext context, [Category? item]) async {
     final saved = await openDemo<bool>(context, _CategoryEditor(demo, item));
     if (context.mounted && saved == true) {
       demoFeedback(context, 'Kategori disimpan.');
     }
   }
 
-  Future<void> _delete(BuildContext context, DemoCategory item) async {
+  Future<void> _delete(BuildContext context, Category item) async {
     final choices = [
-      'Tanpa kategori',
-      ...demo.categoryNames.where((name) => name != item.name),
+      null,
+      ...demo.categories.where((category) => category.id != item.id),
     ];
-    final picked = await demoSheet<String>(
+    final picked = await demoSheet<({Category? replacement})>(
       context,
       'Hapus kategori ${item.name}?',
       (sheet) => [
         for (final choice in choices)
           NeoButton(
-            label: choice == 'Tanpa kategori'
+            label: choice == null
                 ? 'Jadikan Tanpa Kategori'
-                : 'Pindahkan ke $choice',
+                : 'Pindahkan ke ${choice.name}',
             variant: NeoButtonVariant.secondary,
-            onPressed: () => Navigator.pop(sheet, choice),
+            onPressed: () => Navigator.pop(sheet, (replacement: choice)),
           ),
         NeoButton(
           label: 'Batal',
@@ -507,11 +563,31 @@ class _Categories extends StatelessWidget {
         ),
       ],
       description:
-          'Pilih tujuan kategori untuk semua aktivitas, tugas, dan rutinitas yang menggunakannya.',
+          'Kegiatan, tugas, dan rutinitas tetap ada. Pilih kategori tujuan untuk semua item terkait.',
     );
     if (!context.mounted || picked == null) return;
-    demo.deleteCategory(item, picked);
-    demoFeedback(context, 'Kategori dihapus. Item dipindahkan ke $picked.');
+    final destination = picked.replacement?.name ?? 'Tanpa Kategori';
+    final approved = await showNeoDialog(
+      context,
+      title: 'Hapus kategori dan pindahkan item?',
+      message: 'Semua item terkait akan dipindahkan ke $destination.',
+      confirmLabel: 'Pindahkan dan hapus kategori',
+      danger: true,
+    );
+    if (!context.mounted || approved != true) return;
+    try {
+      await demo.deleteCategory(item, replacement: picked.replacement);
+      if (context.mounted) {
+        demoFeedback(
+          context,
+          'Kategori dihapus. Item dipindahkan ke $destination.',
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        demoFeedback(context, 'Pemindahan gagal. Coba lagi.');
+      }
+    }
   }
 
   @override
@@ -542,8 +618,8 @@ class _Categories extends StatelessWidget {
             for (final item in demo.categories)
               DemoRow(
                 item.name,
-                icon: demoCategoryIcons[item.icon],
-                color: demoCategoryColors[item.color],
+                icon: _categoryIcons[item.icon]?.$2 ?? Icons.label_outline,
+                color: Color(item.color),
                 onTap: () async {
                   final action = await previewChoices(context, item.name, [
                     'Edit kategori',
@@ -563,19 +639,17 @@ class _Categories extends StatelessWidget {
   );
 }
 
-const demoCategoryIcons = [
-  Icons.label_outline,
-  Icons.work_outline,
-  Icons.school_outlined,
-  Icons.favorite_border,
-];
-const _colorLabels = ['Biru', 'Kuning', 'Koral', 'Hijau'];
-const _iconLabels = ['Label', 'Pekerjaan', 'Belajar', 'Favorit'];
+const _categoryIcons = {
+  'label': ('Label', Icons.label_outline),
+  'work': ('Pekerjaan', Icons.work_outline),
+  'study': ('Belajar', Icons.school_outlined),
+  'favorite': ('Favorit', Icons.favorite_border),
+};
 
 class _CategoryEditor extends StatefulWidget {
   const _CategoryEditor(this.demo, this.category);
   final DemoSession demo;
-  final DemoCategory? category;
+  final Category? category;
   @override
   State<_CategoryEditor> createState() => _CategoryEditorState();
 }
@@ -583,29 +657,47 @@ class _CategoryEditor extends StatefulWidget {
 class _CategoryEditorState extends State<_CategoryEditor> {
   final form = GlobalKey<FormState>();
   late String name = widget.category?.name ?? '';
-  late int color = widget.category?.color ?? 0;
-  late int icon = widget.category?.icon ?? 0;
+  late int color =
+      widget.category?.color ?? previewCategoryPalette.values.first;
+  late String icon = widget.category?.icon ?? 'label';
+  bool saving = false;
+  String? error;
 
-  void _save() {
-    if (!form.currentState!.validate()) return;
+  Future<void> _save() async {
+    if (saving || !form.currentState!.validate()) return;
     final category = widget.category;
-    if (category == null) {
-      widget.demo.change(
-        () => widget.demo.categories.add(
-          DemoCategory(name.trim(), color)..icon = icon,
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.demo.saveCategory(
+        Category(
+          category?.metadata ?? RecordMetadata.create(),
+          name: name.trim(),
+          color: color,
+          icon: icon,
         ),
       );
-    } else {
-      category.icon = icon;
-      widget.demo.renameCategory(category, name.trim(), color);
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          saving = false;
+          error = 'Kategori belum dapat disimpan. Coba lagi.';
+        });
+      }
     }
-    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) => PreviewPage(
     title: widget.category == null ? 'Tambah kategori' : 'Edit kategori',
-    footer: NeoButton(label: 'Simpan kategori', onPressed: _save),
+    footer: NeoButton(
+      label: 'Simpan kategori',
+      onPressed: saving ? null : _save,
+      loading: saving,
+    ),
     body: Form(
       key: form,
       child: DemoList([
@@ -615,12 +707,11 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           onChanged: (value) => name = value,
           validator: (_) {
             if (name.trim().isEmpty) return 'Isi nama kategori.';
-            if (name.trim().toLowerCase() == 'tanpa kategori' ||
-                widget.demo.categories.any(
-                  (item) =>
-                      item != widget.category &&
-                      item.name.toLowerCase() == name.trim().toLowerCase(),
-                )) {
+            if (!isCategoryNameAvailable(
+              name,
+              widget.demo.categories,
+              editingId: widget.category?.id,
+            )) {
               return 'Nama ini sudah dipakai. Pilih nama lain.';
             }
             return null;
@@ -631,12 +722,12 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           spacing: NeoSpace.xs,
           runSpacing: NeoSpace.xxs,
           children: [
-            for (var i = 0; i < _colorLabels.length; i++)
+            for (final choice in previewCategoryPalette.entries)
               CategoryChip(
-                label: _colorLabels[i],
-                color: demoCategoryColors[i],
-                selected: i == color,
-                onSelected: (_) => setState(() => color = i),
+                label: choice.key,
+                color: Color(choice.value),
+                selected: choice.value == color,
+                onSelected: (_) => setState(() => color = choice.value),
               ),
           ],
         ),
@@ -645,15 +736,21 @@ class _CategoryEditorState extends State<_CategoryEditor> {
           spacing: NeoSpace.xs,
           runSpacing: NeoSpace.xxs,
           children: [
-            for (var i = 0; i < _iconLabels.length; i++)
+            for (final choice in _categoryIcons.entries)
               CategoryChip(
-                label: _iconLabels[i],
-                icon: demoCategoryIcons[i],
-                selected: i == icon,
-                onSelected: (_) => setState(() => icon = i),
+                label: choice.value.$1,
+                icon: choice.value.$2,
+                selected: choice.key == icon,
+                onSelected: (_) => setState(() => icon = choice.key),
               ),
           ],
         ),
+        if (error case final message?)
+          PreviewNotice(
+            title: 'Kategori belum disimpan',
+            message: message,
+            warning: true,
+          ),
       ]),
     ),
   );

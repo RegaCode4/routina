@@ -42,7 +42,12 @@ class _DemoSmartState extends State<DemoSmart> {
   late int estimate = task.remaining ?? task.estimate ?? 60;
   int minimum = 25;
   int maximum = 120;
-  String preference = 'Jam aktif';
+  late String preference = switch (demo.preferredTimeForCategory(
+    task.category,
+  )) {
+    '' => 'Jam aktif',
+    final value => value,
+  };
   String? issue;
   String blocked = '';
   bool busy = false;

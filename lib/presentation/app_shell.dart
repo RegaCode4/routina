@@ -116,7 +116,10 @@ class _AppShellState extends State<AppShell> {
       MaterialPageRoute(
         builder: (_) => EventEditor(
           repository: widget.repository,
-          draft: EventDraft(date: day),
+          draft: EventDraft(
+            date: day,
+            zone: timeModeLabel(_demo.preferences.eventTimeMode),
+          ),
           categories: _demo.eventCategories,
         ),
       ),

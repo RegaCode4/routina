@@ -1,6 +1,14 @@
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 
 enum PreviewSurface { startup, home, calendar }
+
+const previewCategoryPalette = {
+  'Biru': 0xFF537BFF,
+  'Kuning': 0xFFFFE65B,
+  'Koral': 0xFFFF8C82,
+  'Hijau': 0xFFD5ECBE,
+};
 
 abstract interface class PlannerPreviewRepository {
   DateTime get today;
@@ -8,10 +16,13 @@ abstract interface class PlannerPreviewRepository {
   PreviewProfile? get profile;
   int get onboardingStep;
   List<PreviewEvent> get events;
+  List<Category> get categories;
 
   Future<void> load(PreviewSurface surface);
-  void rememberStep(int step);
+  Future<void> rememberStep(int step);
   Future<void> saveProfile(PreviewProfile profile);
+  Future<Category> saveCategory(Category category);
+  Future<void> deleteCategory(Category category, {Category? replacement});
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope});
   void setEventState(String id, PreviewEventState state, {SeriesScope? scope});
   void reassignCategory(String previous, String next, {String? color});

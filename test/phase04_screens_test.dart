@@ -65,7 +65,7 @@ Future<void> task(WidgetTester tester) async {
 void main() {
   test(
     'deadline, completion, category move and restored sessions keep their own identities',
-    () {
+    () async {
       final repo = MemoryPlannerPreview(
         today: today,
         fixture: PreviewFixture.empty,
@@ -90,9 +90,11 @@ void main() {
       );
       expect(deadline.start.hour, 18);
       expect(session.start.hour, 14);
-      demo.deleteCategory(
+      await demo.deleteCategory(
         demo.categories.singleWhere((item) => item.name == 'Belajar'),
-        'Pekerjaan',
+        replacement: demo.categories.singleWhere(
+          (item) => item.name == 'Pekerjaan',
+        ),
       );
       expect(task.category, 'Pekerjaan');
       expect(

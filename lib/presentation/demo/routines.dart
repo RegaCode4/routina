@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -157,6 +158,7 @@ class _DemoRoutineEditorState extends State<DemoRoutineEditor> {
       return;
     }
     draft.title = draft.title.trim();
+    draft.timeMode ??= widget.demo.preferences.routineTimeMode;
     widget.demo.saveRoutine(draft);
     Navigator.pop(context);
   }
@@ -277,6 +279,23 @@ class _DemoRoutineEditorState extends State<DemoRoutineEditor> {
             'Malam',
             'Bebas',
           ], (value) => draft.schedule = value),
+          PreviewField(
+            label: 'Mode waktu',
+            value: timeModeLabel(
+              draft.timeMode ?? widget.demo.preferences.routineTimeMode,
+            ),
+            onTap: () async {
+              final mode = await previewChoices(
+                context,
+                'Mode waktu',
+                TimeMode.values,
+                timeModeLabel,
+              );
+              if (mounted && mode != null) {
+                setState(() => draft.timeMode = mode);
+              }
+            },
+          ),
           _choice('Kategori', draft.category, [
             ...widget.demo.categoryNames,
             'Tanpa kategori',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
@@ -9,7 +10,11 @@ import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 
 class EventDraft {
-  EventDraft({this.date, this.title = ''});
+  EventDraft({
+    this.date,
+    this.title = '',
+    this.zone = 'Pertahankan zona asal (WIB)',
+  });
   EventDraft.fromEvent(PreviewEvent event)
     : id = event.id,
       state = event.state,
@@ -49,7 +54,7 @@ class EventDraft {
   String location = '';
   String note = '';
   String link = '';
-  String zone = 'Pertahankan zona asal (WIB)';
+  String zone;
   int before = 0;
   int after = 0;
 
@@ -463,10 +468,11 @@ class _EventEditorState extends State<EventEditor> {
             PreviewField(
               label: 'Zona waktu',
               value: _draft.zone,
-              onTap: () => _choose('Zona waktu', [
-                'Pertahankan zona asal (WIB)',
-                'Ikuti zona tampilan (WITA)',
-              ], (value) => _draft.zone = value),
+              onTap: () => _choose(
+                'Zona waktu',
+                TimeMode.values.map(timeModeLabel).toList(),
+                (value) => _draft.zone = value,
+              ),
             ),
             const SizedBox(height: NeoSpace.md),
             Row(

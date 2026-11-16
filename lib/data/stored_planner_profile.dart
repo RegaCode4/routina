@@ -4,29 +4,47 @@ import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 
-/// Keeps the established preview routes while the local profile uses SQLite.
+/// Durable settings alongside the existing calendar and activity previews.
 class StoredPlannerProfile extends MemoryPlannerPreview {
   StoredPlannerProfile({
     required super.today,
     required Future<PlannerStore> Function() openStore,
-  }) : _openStore = openStore;
+  }) : _openStore = openStore,
+       super(seedCategories: false);
 
   final Future<PlannerStore> Function() _openStore;
   PlannerStore? _store;
+  List<Category> _savedCategories = const [];
+
+  Future<PlannerStore> _database() async => _store ??= await _openStore();
+
+  @override
+  List<Category> get categories => List.unmodifiable(_savedCategories);
 
   @override
   Future<void> load(PreviewSurface surface) async {
     if (surface == PreviewSurface.startup) {
-      final store = _store ??= await _openStore();
+      final store = await _database();
       final record = (await store.profiles.all()).singleOrNull;
-      if (record != null) {
+      _savedCategories = await store.categories.all();
+      await super.rememberStep(record?.onboardingStep ?? 0);
+      if (record != null && record.onboardingCompleted) {
         await super.saveProfile(
           PreviewProfile(
             name: record.name ?? '',
             notifications: record.notificationsEnabled ?? false,
             sundayFirst: record.weekStartsOn == DateTime.sunday,
-            study: record.activityPreferences['study'] ?? 'Sore',
-            workout: record.activityPreferences['workout'] ?? 'Pagi',
+            study: record.activityPreferences['study'] ?? '',
+            workout: record.activityPreferences['workout'] ?? '',
+            other: record.activityPreferences['other'] ?? '',
+            defaultBuffer: record.defaultBuffer,
+            quietHours: record.quietHours,
+            preferences: record.preferences,
+            categoryTimes: {
+              for (final entry in record.activityPreferences.entries)
+                if (entry.key.startsWith('category:'))
+                  entry.key.substring('category:'.length): entry.value,
+            },
             activeHours: {
               for (final entry in record.activeHours.entries)
                 entry.key: ActiveInterval(
@@ -42,8 +60,27 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   }
 
   @override
+  Future<void> rememberStep(int step) async {
+    RangeError.checkValueInInterval(step, 0, 2);
+    final store = await _database();
+    final savedStep = await store.transaction((data) async {
+      final previous = (await data.profiles.all()).singleOrNull;
+      if (previous?.onboardingCompleted == true) return 0;
+      await data.profiles.save(
+        Profile(
+          previous?.metadata ?? RecordMetadata.create(),
+          onboardingStep: step,
+          onboardingCompleted: false,
+        ),
+      );
+      return step;
+    });
+    await super.rememberStep(savedStep);
+  }
+
+  @override
   Future<void> saveProfile(PreviewProfile profile) async {
-    final store = _store ??= await _openStore();
+    final store = await _database();
     await store.transaction((data) async {
       final previous = (await data.profiles.all()).singleOrNull;
       await data.profiles.save(
@@ -52,8 +89,9 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
           name: profile.name,
           notificationsEnabled: profile.notifications,
           weekStartsOn: profile.sundayFirst ? DateTime.sunday : DateTime.monday,
-          defaultBuffer: previous?.defaultBuffer,
-          quietHours: previous?.quietHours,
+          defaultBuffer: profile.defaultBuffer,
+          quietHours: profile.quietHours,
+          preferences: profile.preferences,
           activeHours: {
             for (final entry in profile.activeHours.entries)
               entry.key: (
@@ -62,13 +100,60 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
               ),
           },
           activityPreferences: {
-            ...?previous?.activityPreferences,
+            for (final entry
+                in (previous?.activityPreferences ?? const <String, String>{})
+                    .entries)
+              if (!entry.key.startsWith('category:')) entry.key: entry.value,
             'study': profile.study,
             'workout': profile.workout,
+            'other': profile.other,
+            for (final entry in profile.categoryTimes.entries)
+              'category:${entry.key}': entry.value,
           },
         ),
       );
     });
+    await super.rememberStep(0);
     await super.saveProfile(profile);
+  }
+
+  @override
+  Future<Category> saveCategory(Category category) async {
+    final store = await _database();
+    final saved = await store.transaction((data) async {
+      if (!isCategoryNameAvailable(
+        category.name,
+        await data.categories.all(),
+        editingId: category.id,
+      )) {
+        throw const FormatException('Nama kategori tidak tersedia.');
+      }
+      return data.categories.save(
+        Category(
+          category.metadata,
+          name: category.name.trim(),
+          color: category.color,
+          icon: category.icon,
+        ),
+      );
+    });
+    _savedCategories = [
+      for (final category in _savedCategories)
+        if (category.id == saved.id) saved else category,
+      if (!_savedCategories.any((category) => category.id == saved.id)) saved,
+    ];
+    return saved;
+  }
+
+  @override
+  Future<void> deleteCategory(
+    Category category, {
+    Category? replacement,
+  }) async {
+    final store = await _database();
+    await store.deleteCategory(category.id, replacementId: replacement?.id);
+    _savedCategories = _savedCategories
+        .where((item) => item.id != category.id)
+        .toList();
   }
 }

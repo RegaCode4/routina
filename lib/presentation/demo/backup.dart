@@ -37,12 +37,22 @@ class DemoBackup extends StatelessWidget {
       ),
     };
     if (!context.mounted || (action == 'Atur sendiri' && days == null)) return;
-    demo.change(() => demo.backupReminder = days);
+    final saved = await saveDemoProfile(
+      context,
+      demo,
+      (profile) => profile.copyWith(
+        preferences: profile.preferences.copyWith(
+          backupReminderDays: days,
+          disableBackupReminder: days == null,
+        ),
+      ),
+    );
+    if (!context.mounted || !saved) return;
     demoFeedback(
       context,
       days == null
           ? 'Pengingat backup dinonaktifkan.'
-          : 'Pengingat contoh diatur setiap $days hari.',
+          : 'Preferensi pengingat backup diatur setiap $days hari.',
     );
   }
 

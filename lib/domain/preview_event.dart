@@ -1,3 +1,5 @@
+import 'package:routina/domain/planner_records.dart';
+
 enum PreviewKind { activity, deadline, routine, session }
 
 enum PreviewEventState {
@@ -28,7 +30,7 @@ class ActiveInterval {
   const ActiveInterval(this.start, this.end);
   final int start;
   final int end;
-  bool get isValid => start < end;
+  bool get isValid => start >= 0 && start < end && end <= 1440;
 }
 
 class PreviewProfile {
@@ -37,16 +39,53 @@ class PreviewProfile {
     Map<int, ActiveInterval> activeHours = const {},
     this.study = 'Sore',
     this.workout = 'Pagi',
+    this.other = '',
     this.sundayFirst = false,
     this.notifications = true,
-  }) : activeHours = Map.unmodifiable(activeHours);
+    this.defaultBuffer,
+    this.quietHours,
+    this.preferences = const PlannerPreferences(),
+    Map<String, String> categoryTimes = const {},
+  }) : activeHours = Map.unmodifiable(activeHours),
+       categoryTimes = Map.unmodifiable(categoryTimes);
 
   final String name;
   final Map<int, ActiveInterval> activeHours;
   final String study;
   final String workout;
+  final String other;
+  final Map<String, String> categoryTimes;
   final bool sundayFirst;
   final bool notifications;
+  final Duration? defaultBuffer;
+  final DailyHours? quietHours;
+  final PlannerPreferences preferences;
+
+  PreviewProfile copyWith({
+    String? name,
+    Map<int, ActiveInterval>? activeHours,
+    String? study,
+    String? workout,
+    String? other,
+    Map<String, String>? categoryTimes,
+    bool? sundayFirst,
+    bool? notifications,
+    Duration? defaultBuffer,
+    DailyHours? quietHours,
+    PlannerPreferences? preferences,
+  }) => PreviewProfile(
+    name: name ?? this.name,
+    activeHours: activeHours ?? this.activeHours,
+    study: study ?? this.study,
+    workout: workout ?? this.workout,
+    other: other ?? this.other,
+    categoryTimes: categoryTimes ?? this.categoryTimes,
+    sundayFirst: sundayFirst ?? this.sundayFirst,
+    notifications: notifications ?? this.notifications,
+    defaultBuffer: defaultBuffer ?? this.defaultBuffer,
+    quietHours: quietHours ?? this.quietHours,
+    preferences: preferences ?? this.preferences,
+  );
 }
 
 class EventOptions {

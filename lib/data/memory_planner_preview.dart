@@ -1,4 +1,6 @@
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
+import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 
 enum PreviewFixture {
@@ -20,6 +22,7 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     int onboardingStep = 0,
     PreviewFixture fixture = PreviewFixture.standard,
     Set<PreviewSurface> failOnce = const {},
+    bool seedCategories = true,
     this.latency = const Duration(milliseconds: 250),
   }) : today = dateOnly(today),
        _profile = profile,
@@ -28,6 +31,27 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     final days = (DateTime.tuesday - today.weekday + 7) % 7;
     calendarDay = shiftDay(today, days == 0 ? 7 : days);
     _events = fixture == PreviewFixture.empty ? [] : _samples(fixture);
+    if (seedCategories) {
+      final names = {
+        'Pekerjaan',
+        'Belajar',
+        'Pribadi',
+        ..._events
+            .map((event) => event.options.category)
+            .where((name) => name.isNotEmpty),
+      };
+      final colors = previewCategoryPalette.values.toList();
+      for (final name in names) {
+        _categories.add(
+          Category(
+            RecordMetadata.create(),
+            name: name,
+            color: colors[_categories.length % colors.length],
+            icon: 'label',
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -37,12 +61,15 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   final Duration latency;
   final Set<PreviewSurface> _failOnce;
   late final List<PreviewEvent> _events;
+  final _categories = <Category>[];
   PreviewProfile? _profile;
   int _step;
   int _nextId = 0;
 
   @override
   List<PreviewEvent> get events => List.unmodifiable(_events);
+  @override
+  List<Category> get categories => List.unmodifiable(_categories);
   @override
   PreviewProfile? get profile => _profile;
   @override
@@ -55,10 +82,41 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   }
 
   @override
-  void rememberStep(int step) => _step = step;
+  Future<void> rememberStep(int step) async => _step = step;
 
   @override
   Future<void> saveProfile(PreviewProfile profile) async => _profile = profile;
+
+  @override
+  Future<Category> saveCategory(Category category) async {
+    if (!isCategoryNameAvailable(
+      category.name,
+      _categories,
+      editingId: category.id,
+    )) {
+      throw const FormatException('Nama kategori tidak tersedia.');
+    }
+    final index = _categories.indexWhere((item) => item.id == category.id);
+    if (index == -1) {
+      _categories.add(category);
+    } else {
+      _categories[index] = category;
+    }
+    return category;
+  }
+
+  @override
+  Future<void> deleteCategory(
+    Category category, {
+    Category? replacement,
+  }) async {
+    if (replacement != null &&
+        (replacement.id == category.id ||
+            !_categories.any((item) => item.id == replacement.id))) {
+      throw StaleRecord(replacement.id);
+    }
+    _categories.removeWhere((item) => item.id == category.id);
+  }
 
   @override
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope}) {

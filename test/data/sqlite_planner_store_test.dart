@@ -595,71 +595,74 @@ void main() {
     },
   );
 
-  test('migrates schema 1 to 2, retaining deadline and references', () async {
-    final old = await factory.openDatabase(
-      path,
-      options: OpenDatabaseOptions(
-        version: 1,
-        onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
-        onCreate: (db, _) => createPlannerSchemaV1(db),
-      ),
-    );
-    final created = base.microsecondsSinceEpoch;
-    for (final (id, kind) in [
-      ('category-v1', 'category'),
-      ('task-v1', 'task'),
-    ]) {
-      await old.insert('records', {
-        'id': id,
-        'kind': kind,
-        'revision': 1,
-        'created_at_us': created,
-        'updated_at_us': created,
+  test(
+    'migrates schema 1 to current, retaining deadline and references',
+    () async {
+      final old = await factory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+          onCreate: (db, _) => createPlannerSchemaV1(db),
+        ),
+      );
+      final created = base.microsecondsSinceEpoch;
+      for (final (id, kind) in [
+        ('category-v1', 'category'),
+        ('task-v1', 'task'),
+      ]) {
+        await old.insert('records', {
+          'id': id,
+          'kind': kind,
+          'revision': 1,
+          'created_at_us': created,
+          'updated_at_us': created,
+        });
+      }
+      await old.insert('categories', {
+        'id': 'category-v1',
+        'name': 'Belajar',
+        'color': 0,
       });
-    }
-    await old.insert('categories', {
-      'id': 'category-v1',
-      'name': 'Belajar',
-      'color': 0,
-    });
-    await old.insert('tasks', {
-      'id': 'task-v1',
-      'title': 'Tugas lama',
-      'category_id': 'category-v1',
-      'status': 'planned',
-      'deadline_us': at(9).instant.microsecondsSinceEpoch,
-      'deadline_zone': asiaJakarta,
-      'deadline_mode': 'originalZone',
-    });
-    await old.close();
+      await old.insert('tasks', {
+        'id': 'task-v1',
+        'title': 'Tugas lama',
+        'category_id': 'category-v1',
+        'status': 'planned',
+        'deadline_us': at(9).instant.microsecondsSinceEpoch,
+        'deadline_zone': asiaJakarta,
+        'deadline_mode': 'originalZone',
+      });
+      await old.close();
 
-    final migrated = await open();
-    final task = (await migrated.tasks.find('task-v1'))!;
-    expect(task.categoryId, 'category-v1');
-    expect(task.deadline!.zoneId, asiaJakarta);
-    expect(task.confirmedRemainingEstimate, isNull);
-    final updated = await migrated.tasks.save(
-      Task(
-        task.metadata,
-        title: task.title,
-        deadline: task.deadline,
-        categoryId: task.categoryId,
-        confirmedRemainingEstimate: const Duration(minutes: 25),
-        remainingConfirmedAt: base,
-      ),
-    );
-    expect(updated.confirmedRemainingEstimate, const Duration(minutes: 25));
-    await migrated.close();
-    final inspect = await factory.openDatabase(path);
-    addTearDown(inspect.close);
-    expect(await inspect.getVersion(), plannerSchemaVersion);
-    expect(await inspect.rawQuery('PRAGMA foreign_key_check'), isEmpty);
-    final plan = await inspect.rawQuery(
-      'EXPLAIN QUERY PLAN SELECT id FROM tasks WHERE deadline_us >= ? AND deadline_us < ?',
-      [created, at(24).instant.microsecondsSinceEpoch],
-    );
-    expect(plan.toString(), contains('tasks_deadline'));
-  });
+      final migrated = await open();
+      final task = (await migrated.tasks.find('task-v1'))!;
+      expect(task.categoryId, 'category-v1');
+      expect(task.deadline!.zoneId, asiaJakarta);
+      expect(task.confirmedRemainingEstimate, isNull);
+      final updated = await migrated.tasks.save(
+        Task(
+          task.metadata,
+          title: task.title,
+          deadline: task.deadline,
+          categoryId: task.categoryId,
+          confirmedRemainingEstimate: const Duration(minutes: 25),
+          remainingConfirmedAt: base,
+        ),
+      );
+      expect(updated.confirmedRemainingEstimate, const Duration(minutes: 25));
+      await migrated.close();
+      final inspect = await factory.openDatabase(path);
+      addTearDown(inspect.close);
+      expect(await inspect.getVersion(), plannerSchemaVersion);
+      expect(await inspect.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+      final plan = await inspect.rawQuery(
+        'EXPLAIN QUERY PLAN SELECT id FROM tasks WHERE deadline_us >= ? AND deadline_us < ?',
+        [created, at(24).instant.microsecondsSinceEpoch],
+      );
+      expect(plan.toString(), contains('tasks_deadline'));
+    },
+  );
 
   test('failed migration and newer version leave database intact', () async {
     final old = await factory.openDatabase(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
@@ -22,6 +23,22 @@ void demoFeedback(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
+}
+
+Future<bool> saveDemoProfile(
+  BuildContext context,
+  DemoSession demo,
+  PreviewProfile Function(PreviewProfile) edit,
+) async {
+  try {
+    await demo.updateProfile(edit);
+    return true;
+  } catch (_) {
+    if (context.mounted) {
+      demoFeedback(context, 'Pengaturan belum dapat disimpan. Coba lagi.');
+    }
+    return false;
+  }
 }
 
 class DemoTab extends StatelessWidget {
@@ -331,6 +348,7 @@ Future<String?> demoText(
   String title,
   String label, {
   String initial = '',
+  bool requiredInput = true,
 }) => demoSheet<String>(context, title, (sheet) {
   final key = GlobalKey<FormState>();
   var input = initial;
@@ -341,7 +359,8 @@ Future<String?> demoText(
         label: label,
         initialValue: input,
         onChanged: (value) => input = value,
-        validator: (value) => value == null || value.trim().isEmpty
+        validator: (value) =>
+            requiredInput && (value == null || value.trim().isEmpty)
             ? 'Isi ${label.toLowerCase()}.'
             : null,
       ),
@@ -357,12 +376,6 @@ Future<String?> demoText(
 
 String demoSlotLabel(DemoSlot slot) =>
     '${dateLabel(slot.start)} · ${clockLabel(slot.start.hour * 60 + slot.start.minute)}–${clockLabel(slot.end.hour * 60 + slot.end.minute)}';
-final demoCategoryColors = [
-  NeoColors.blue,
-  NeoColors.yellow,
-  NeoColors.coral,
-  NeoColors.greenTint,
-];
 const demoReminders = [
   'Tanpa pengingat',
   'Saat mulai',

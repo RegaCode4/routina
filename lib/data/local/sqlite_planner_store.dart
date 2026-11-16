@@ -173,18 +173,56 @@ class _SqliteData implements PlannerData {
   }
 
   @override
-  Future<TrashEntry> softDelete(RecordRef ref) => _write((db) async {
+  Future<TrashEntry> softDelete(RecordRef ref) =>
+      _write((db) => _softDelete(db, ref));
+
+  static const _categorizedTables = [
+    'event_series',
+    'event_occurrences',
+    'tasks',
+    'routines',
+  ];
+
+  @override
+  Future<TrashEntry> deleteCategory(String id, {String? replacementId}) =>
+      _write((db) async {
+        if (id == replacementId) {
+          throw ArgumentError('Replacement category must differ');
+        }
+        if (await _find(db, _category, id, includeDeleted: false) == null) {
+          throw StaleRecord(id);
+        }
+        if (replacementId != null &&
+            await _find(db, _category, replacementId, includeDeleted: false) ==
+                null) {
+          throw StaleRecord(replacementId);
+        }
+        final now = _now().microsecondsSinceEpoch;
+        for (final table in _categorizedTables) {
+          await db.rawUpdate(
+            '''
+        UPDATE records SET revision = revision + 1, updated_at_us = MAX(updated_at_us, ?)
+        WHERE id IN (SELECT id FROM $table WHERE category_id = ?)
+        ''',
+            [now, id],
+          );
+          await db.update(
+            table,
+            {'category_id': replacementId},
+            where: 'category_id = ?',
+            whereArgs: [id],
+          );
+        }
+        return _softDelete(db, (kind: RecordKind.category, id: id));
+      });
+
+  Future<TrashEntry> _softDelete(DatabaseExecutor db, RecordRef ref) async {
     final target = await _metadata(db, ref);
     if (target == null) throw StaleRecord(ref.id);
     final entry = await _tombstone(db, ref.id);
     if (entry != null && entry.restoredAt == null) return entry;
     if (ref.kind == RecordKind.category) {
-      for (final table in [
-        'event_series',
-        'event_occurrences',
-        'tasks',
-        'routines',
-      ]) {
+      for (final table in _categorizedTables) {
         final used = await db.rawQuery(
           '''
           SELECT 1 FROM $table WHERE category_id = ? AND id NOT IN (SELECT id FROM hidden_records)
@@ -212,7 +250,7 @@ class _SqliteData implements PlannerData {
     );
     await _updateMetadata(db, target, now);
     return result;
-  });
+  }
 
   @override
   Future<void> restore(String trashEntryId) => _write((db) async {

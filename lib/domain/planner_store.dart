@@ -29,7 +29,23 @@ abstract interface class PlannerData {
   /// Calendar intervals overlap a half-open range. Deadlines are points.
   Future<List<CalendarEntry>> calendar(DateTime from, DateTime until);
   Future<TrashEntry> softDelete(RecordRef ref);
+  Future<TrashEntry> deleteCategory(String id, {String? replacementId});
   Future<void> restore(String trashEntryId);
+}
+
+bool isCategoryNameAvailable(
+  String name,
+  Iterable<Category> categories, {
+  String? editingId,
+}) {
+  final normalized = name.trim().toLowerCase();
+  return normalized.isNotEmpty &&
+      normalized != 'tanpa kategori' &&
+      !categories.any(
+        (category) =>
+            category.id != editingId &&
+            category.name.trim().toLowerCase() == normalized,
+      );
 }
 
 abstract interface class PlannerStore implements PlannerData {

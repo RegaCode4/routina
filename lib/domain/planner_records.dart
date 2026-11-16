@@ -120,6 +120,61 @@ class ScheduledInterval {
 
 typedef DailyHours = ({int startMinute, int endMinute});
 
+enum ReminderKind { event, deadline, workSession, routine }
+
+class PlannerPreferences {
+  const PlannerPreferences({
+    this.calendarZoneId,
+    this.eventTimeMode = TimeMode.originalZone,
+    this.routineTimeMode = TimeMode.localWallTime,
+    this.deadlineTimeMode = TimeMode.originalZone,
+    this.quietEnabled,
+    this.reminderTypes = const {},
+    this.quietExceptions = const {},
+    this.quietExceptionsEnabled = false,
+    this.backupReminderDays,
+  });
+
+  final String? calendarZoneId;
+  final TimeMode eventTimeMode;
+  final TimeMode routineTimeMode;
+  final TimeMode deadlineTimeMode;
+  final bool? quietEnabled;
+  final Map<ReminderKind, bool> reminderTypes;
+  final Set<ReminderKind> quietExceptions;
+  final bool quietExceptionsEnabled;
+  final int? backupReminderDays;
+
+  PlannerPreferences copyWith({
+    String? calendarZoneId,
+    bool useDeviceZone = false,
+    TimeMode? eventTimeMode,
+    TimeMode? routineTimeMode,
+    TimeMode? deadlineTimeMode,
+    bool? quietEnabled,
+    Map<ReminderKind, bool>? reminderTypes,
+    Set<ReminderKind>? quietExceptions,
+    bool? quietExceptionsEnabled,
+    int? backupReminderDays,
+    bool disableBackupReminder = false,
+  }) => PlannerPreferences(
+    calendarZoneId: useDeviceZone
+        ? null
+        : calendarZoneId ?? this.calendarZoneId,
+    eventTimeMode: eventTimeMode ?? this.eventTimeMode,
+    routineTimeMode: routineTimeMode ?? this.routineTimeMode,
+    deadlineTimeMode: deadlineTimeMode ?? this.deadlineTimeMode,
+    quietEnabled: quietEnabled ?? this.quietEnabled,
+    reminderTypes: reminderTypes ?? this.reminderTypes,
+    quietExceptions: quietExceptions ?? this.quietExceptions,
+    quietExceptionsEnabled:
+        quietExceptionsEnabled ?? this.quietExceptionsEnabled,
+    backupReminderDays: disableBackupReminder
+        ? null
+        : backupReminderDays ?? this.backupReminderDays,
+  );
+}
+
 class Profile extends PlannerRecord {
   Profile(
     super.metadata, {
@@ -128,6 +183,9 @@ class Profile extends PlannerRecord {
     this.weekStartsOn,
     this.defaultBuffer,
     this.quietHours,
+    this.onboardingStep = 0,
+    this.onboardingCompleted = true,
+    this.preferences = const PlannerPreferences(),
     Map<int, DailyHours> activeHours = const {},
     Map<String, String> activityPreferences = const {},
   }) : activeHours = Map.unmodifiable(activeHours),
@@ -138,6 +196,9 @@ class Profile extends PlannerRecord {
   final int? weekStartsOn;
   final Duration? defaultBuffer;
   final DailyHours? quietHours;
+  final int onboardingStep;
+  final bool onboardingCompleted;
+  final PlannerPreferences preferences;
   final Map<int, DailyHours> activeHours;
   final Map<String, String> activityPreferences;
 }

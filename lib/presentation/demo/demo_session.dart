@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show ChangeNotifier, VoidCallback;
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 
 class DemoSlot {
@@ -99,6 +100,7 @@ class DemoRoutine {
     this.actual = 0,
     this.frequency = 'Setiap hari',
     this.schedule = 'Pagi',
+    this.timeMode,
     this.category = 'Tanpa kategori',
     this.reminder = 'Tanpa pengingat',
     this.completed = false,
@@ -117,6 +119,7 @@ class DemoRoutine {
   int actual;
   String frequency;
   String schedule;
+  TimeMode? timeMode;
   String category;
   String reminder;
   bool completed;
@@ -138,6 +141,7 @@ class DemoRoutine {
     actual: actual,
     frequency: frequency,
     schedule: schedule,
+    timeMode: timeMode,
     category: category,
     reminder: reminder,
     completed: completed,
@@ -146,13 +150,6 @@ class DemoRoutine {
     timer: timer,
     timerOpened: timerOpened,
   );
-}
-
-class DemoCategory {
-  DemoCategory(this.name, this.color);
-  String name;
-  int color;
-  int icon = 0;
 }
 
 enum DemoFeed { ready, empty, loading, error }
@@ -321,22 +318,10 @@ class DemoSession extends ChangeNotifier {
         ),
       ]);
     }
-    if (feed('categories') == DemoFeed.empty) {
-      categories.clear();
-    } else {
-      final existing = planner.events
-          .map((event) => event.options.category)
-          .where((name) => name.isNotEmpty)
-          .toSet();
-      for (final name in existing.difference(categoryNames.toSet())) {
-        categories.add(
-          DemoCategory(name, categories.length % demoColorNames.length),
-        );
-      }
-    }
     if (scenario == 'notifications-off') {
       permission = 'Ditolak';
-    } else if (scenario != 'notifications-not-requested' &&
+    } else if (scenario.isNotEmpty &&
+        scenario != 'notifications-not-requested' &&
         planner.profile?.notifications == true) {
       permission = 'Diizinkan';
     }
@@ -346,39 +331,40 @@ class DemoSession extends ChangeNotifier {
   final String scenario;
   final tasks = <DemoTask>[];
   final routines = <DemoRoutine>[];
-  final categories = [
-    DemoCategory('Pekerjaan', 0),
-    DemoCategory('Belajar', 1),
-    DemoCategory('Pribadi', 2),
-  ];
   final trash = <DemoTrash>[];
   final removedEvents = <String>{};
-  final quietAllowed = <String>{};
   final dismissedFeeds = <String>{};
-  final notificationTypes = {
-    'Kegiatan': true,
-    'Tenggat tugas': true,
-    'Sesi pengerjaan': true,
-    'Rutinitas': true,
-  };
   String permission = 'Belum diminta';
-  bool quiet = false;
-  bool quietExceptions = false;
-  int quietStart = 22 * 60;
-  int quietEnd = 7 * 60;
-  String zone = 'Pertahankan zona asal (WIB)';
-  int buffer = 0;
-  int? backupReminder;
   String? lastBackup;
   int _id = 0;
   int revision = 0;
+  Future<void> _profileSave = Future.value();
+  bool _disposed = false;
 
   DateTime get today => planner.today;
+  PlannerPreferences get preferences =>
+      planner.profile?.preferences ?? const PlannerPreferences();
+  bool get quiet =>
+      preferences.quietEnabled ?? (planner.profile?.quietHours != null);
+  int get quietStart => planner.profile?.quietHours?.startMinute ?? 22 * 60;
+  int get quietEnd => planner.profile?.quietHours?.endMinute ?? 7 * 60;
+  int get buffer => planner.profile?.defaultBuffer?.inMinutes ?? 0;
+  int? get backupReminder => preferences.backupReminderDays;
+  List<Category> get categories => planner.categories;
   List<String> get categoryNames =>
       categories.map((category) => category.name).toList();
+  String preferredTimeForCategory(String categoryName) {
+    final profile = planner.profile;
+    if (profile == null) return '';
+    final category = categories
+        .where((item) => item.name == categoryName)
+        .firstOrNull;
+    return profile.categoryTimes[category?.id] ?? profile.other;
+  }
+
   Map<String, String> get eventCategories => {
     for (final category in categories)
-      category.name: demoColorNames[category.color],
+      category.name: _colorName(category.color),
   };
   DemoTask? taskFor(String eventId) => tasks
       .where(
@@ -414,7 +400,25 @@ class DemoSession extends ChangeNotifier {
 
   void change(VoidCallback mutation) {
     mutation();
-    notifyListeners();
+    if (!_disposed) notifyListeners();
+  }
+
+  Future<void> updateProfile(PreviewProfile Function(PreviewProfile) edit) {
+    final write = _profileSave.then((_) async {
+      await planner.saveProfile(edit(planner.profile!));
+      change(() => revision++);
+    });
+    _profileSave = write.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return write;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 
   void retry(String name) => change(() => dismissedFeeds.add(name));
@@ -620,17 +624,31 @@ class DemoSession extends ChangeNotifier {
     revision++;
   });
 
-  void renameCategory(DemoCategory category, String name, int color) =>
-      change(() {
-        _reassign(category.name, name, color: demoColorNames[color]);
-        category.name = name;
-        category.color = color;
-      });
+  Future<void> saveCategory(Category category) async {
+    final previous = categories
+        .where((item) => item.id == category.id)
+        .firstOrNull;
+    final saved = await planner.saveCategory(category);
+    change(() {
+      if (previous != null) {
+        _reassign(previous.name, saved.name, color: _colorName(saved.color));
+      }
+    });
+  }
 
-  void deleteCategory(DemoCategory category, String destination) => change(() {
-    _reassign(category.name, destination, color: eventCategories[destination]);
-    categories.remove(category);
-  });
+  Future<void> deleteCategory(
+    Category category, {
+    Category? replacement,
+  }) async {
+    await planner.deleteCategory(category, replacement: replacement);
+    change(
+      () => _reassign(
+        category.name,
+        replacement?.name ?? 'Tanpa kategori',
+        color: replacement == null ? null : _colorName(replacement.color),
+      ),
+    );
+  }
 
   void _reassign(String before, String after, {String? color}) {
     planner.reassignCategory(
@@ -650,4 +668,9 @@ class DemoSession extends ChangeNotifier {
   }
 }
 
-const demoColorNames = ['Biru', 'Kuning', 'Koral', 'Hijau'];
+String _colorName(int color) =>
+    previewCategoryPalette.entries
+        .where((entry) => entry.value == color)
+        .firstOrNull
+        ?.key ??
+    'Biru';
