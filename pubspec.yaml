@@ -21,9 +21,15 @@ flutter:
   uses-material-design: true
   assets:
     - assets/font/Bricolage_Grotesque/OFL.txt
+    - assets/font/Space_Mono/OFL.txt
   fonts:
     - family: Bricolage Grotesque
       fonts:
         - asset: assets/font/Bricolage_Grotesque/static/BricolageGrotesque-Regular.ttf
         - asset: assets/font/Bricolage_Grotesque/static/BricolageGrotesque-Bold.ttf
+          weight: 700
+    - family: Space Mono
+      fonts:
+        - asset: assets/font/Space_Mono/SpaceMono-Regular.ttf
+        - asset: assets/font/Space_Mono/SpaceMono-Bold.ttf
           weight: 700

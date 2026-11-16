@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:routina/application/read_today.dart';
 import 'package:routina/domain/clock.dart';
 import 'package:routina/presentation/app.dart';
+import 'package:routina/presentation/design_system/neo_navigation.dart';
 
 final class _TestClock implements Clock {
   DateTime date = DateTime(2026, 11, 16);
@@ -22,7 +23,7 @@ void main() {
     await tester.pumpWidget(RoutinaApp(readToday: ReadToday(_TestClock())));
     await tester.pumpAndSettle();
 
-    final navigation = find.byType(NavigationBar);
+    final navigation = find.byType(RoutinaBottomNavigation);
     for (final label in [
       'Kalender',
       'To-Do List',
@@ -35,7 +36,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.descendant(of: find.byType(AppBar), matching: find.text(label)),
+        find.descendant(of: find.byType(AppHeader), matching: find.text(label)),
         findsOneWidget,
       );
     }
@@ -45,16 +46,19 @@ void main() {
     expect(navigation, findsNothing);
     expect(
       find.descendant(
-        of: find.byType(AppBar),
+        of: find.byType(AppHeader),
         matching: find.text('Statistik'),
       ),
       findsOneWidget,
     );
 
-    await tester.tap(find.byType(BackButton));
+    await tester.tap(find.byTooltip('Kembali'));
     await tester.pumpAndSettle();
     expect(navigation, findsOneWidget);
-    expect(tester.widget<NavigationBar>(navigation).selectedIndex, 0);
+    expect(
+      tester.widget<RoutinaBottomNavigation>(navigation).selected,
+      RoutinaTab.home,
+    );
   });
 
   testWidgets('shows a safe failure message and retries the date', (
@@ -86,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('16 November 2026'), findsOneWidget);
 
-    final navigation = find.byType(NavigationBar);
+    final navigation = find.byType(RoutinaBottomNavigation);
     await tester.tap(find.text('Kalender'));
     await tester.pumpAndSettle();
     binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -94,7 +98,10 @@ void main() {
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
 
-    expect(tester.widget<NavigationBar>(navigation).selectedIndex, 1);
+    expect(
+      tester.widget<RoutinaBottomNavigation>(navigation).selected,
+      RoutinaTab.calendar,
+    );
     await tester.tap(find.text('Home'));
     await tester.pumpAndSettle();
     expect(find.textContaining('17 November 2026'), findsOneWidget);
@@ -112,14 +119,34 @@ void main() {
 
     await tester.pumpWidget(RoutinaApp(readToday: ReadToday(_TestClock())));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('To-Do List'));
+    await tester.tap(find.bySemanticsLabel(RegExp(r'^To-Do List,')));
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
     expect(find.text('Fitur halaman ini belum tersedia.'), findsOneWidget);
     expect(
-      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
-      2,
+      tester
+          .widget<RoutinaBottomNavigation>(find.byType(RoutinaBottomNavigation))
+          .selected,
+      RoutinaTab.tasks,
     );
+  });
+
+  testWidgets('opens and dismisses the add menu without saving data', (
+    tester,
+  ) async {
+    await tester.pumpWidget(RoutinaApp(readToday: ReadToday(_TestClock())));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Tambah aktivitas'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tambah Kegiatan'), findsOneWidget);
+    expect(find.text('Tambah Tugas'), findsOneWidget);
+    expect(find.text('Tambah Rutinitas'), findsOneWidget);
+
+    await tester.tap(find.text('Tambah Tugas'));
+    await tester.pumpAndSettle();
+    expect(find.text('Formulir Tugas belum tersedia.'), findsOneWidget);
+    expect(find.byTooltip('Tambah aktivitas'), findsOneWidget);
   });
 }
