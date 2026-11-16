@@ -153,7 +153,8 @@ class _PlannerHomeState extends State<PlannerHome> {
           (entry) =>
               entry.kind == PreviewKind.deadline &&
               entry.state == PreviewEventState.pending &&
-              entry.start.isBefore(widget.repository.today),
+              (widget.repository.usesStoredCalendar ||
+                  entry.start.isBefore(widget.repository.today)),
         )
         .toList();
     final next = daily.next;
@@ -277,7 +278,7 @@ class _PlannerHomeState extends State<PlannerHome> {
                     ? null
                     : entry.options.category,
                 recurring: entry.series != null,
-                status: badgeFor(entry.state),
+                status: agendaStatus(entry),
                 onTap: () => widget.onOpen(entry),
               ),
             ),

@@ -1,4 +1,5 @@
 import 'package:routina/domain/event_recurrence.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:timezone/data/latest_all.dart' as data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -37,4 +38,38 @@ class CalendarZones {
     wall.millisecond,
     wall.microsecond,
   ).toUtc();
+
+  DateTime effectiveTime(ZonedTime time) => time.mode == TimeMode.localWallTime
+      ? instant(DateTime.parse(time.localWallTime!), deviceId)
+      : time.instant;
+
+  ZonedTime atWall(DateTime wall, String zone, TimeMode mode) => ZonedTime(
+    instant: instant(wall, zone),
+    zoneId: zone,
+    mode: mode,
+    localWallTime: civilTime(wall).toIso8601String().replaceFirst('Z', ''),
+  );
+
+  ScheduledInterval interval(
+    DateTime start,
+    DateTime end,
+    String zone,
+    TimeMode mode,
+  ) {
+    final first = atWall(start, zone, mode);
+    final adjustment = wall(first.instant, zone).difference(civilTime(start));
+    final last = instant(civilTime(end).add(adjustment), zone);
+    final duration = civilTime(end).difference(civilTime(start));
+    return ScheduledInterval(
+      first,
+      ZonedTime(
+        instant: last.isAfter(first.instant)
+            ? last
+            : first.instant.add(duration),
+        zoneId: zone,
+        mode: mode,
+        localWallTime: civilTime(end).toIso8601String().replaceFirst('Z', ''),
+      ),
+    );
+  }
 }

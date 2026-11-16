@@ -601,13 +601,15 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
     time: eventTime(entry),
     category: entry.kind == PreviewKind.deadline
         ? entry.options.zone
+        : entry.kind == PreviewKind.session
+        ? 'Sesi pengerjaan'
         : entry.warning != null
         ? warningTitle(entry.warning!)
         : entry.options.category.isEmpty
         ? null
         : entry.options.category,
     recurring: entry.series != null,
-    status: badgeFor(entry.state),
+    status: agendaStatus(entry),
     highlighted: entry.options.availability == DayAvailability.busy,
     onTap: () => widget.onOpen(entry),
   );

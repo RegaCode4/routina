@@ -164,6 +164,8 @@ class _SqliteData implements PlannerData {
             end: row.optionalInstant('end_us'),
             status: row.status,
             categoryId: row.optionalText('category_id'),
+            startTime: _calendarTime(row, 'start'),
+            endTime: _calendarTime(row, 'end'),
             availability: row['availability'] == null
                 ? null
                 : EventAvailability.values.byName(row.text('availability')),
@@ -486,28 +488,42 @@ Future<T> _save<T extends PlannerRecord>(
   return _decode(table, (await _find(db, table, id, includeDeleted: true))!);
 }
 
+ZonedTime? _calendarTime(Map<String, Object?> row, String prefix) =>
+    row['${prefix}_mode'] == null
+    ? null
+    : ZonedTime(
+        instant: row.instant('${prefix}_us'),
+        zoneId: row.text('${prefix}_zone'),
+        mode: TimeMode.values.byName(row.text('${prefix}_mode')),
+        localWallTime: row.optionalText('${prefix}_local'),
+      );
+
 const _calendarQuery = '''
 WITH range(from_us, until_us) AS (VALUES (?, ?)),
 hidden AS (SELECT id FROM hidden_records)
 SELECT * FROM (
   SELECT 'event' entry_kind, e.id, COALESCE(e.routine_occurrence_id, e.id) obligation_id,
-    e.title, e.start_us, e.end_us, e.status, COALESCE(e.category_id, s.category_id) category_id, e.availability
+    e.title, e.start_us, e.end_us, e.status, COALESCE(e.category_id, s.category_id) category_id, e.availability,
+    NULL start_zone, NULL start_mode, NULL start_local, NULL end_zone, NULL end_mode, NULL end_local
   FROM event_occurrences e
   JOIN range ON e.end_us > range.from_us AND e.start_us < range.until_us
   LEFT JOIN event_series s ON s.id = e.series_id
   WHERE e.id NOT IN (SELECT id FROM hidden)
     AND (e.routine_occurrence_id IS NULL OR e.routine_occurrence_id NOT IN (SELECT id FROM hidden))
   UNION ALL
-  SELECT 'deadline', t.id, t.id, t.title, t.deadline_us, NULL, t.status, t.category_id, NULL
+  SELECT 'deadline', t.id, t.id, t.title, t.deadline_us, NULL, t.status, t.category_id, NULL,
+    t.deadline_zone, t.deadline_mode, t.deadline_local, NULL, NULL, NULL
   FROM tasks t JOIN range ON t.deadline_us >= range.from_us AND t.deadline_us < range.until_us
   WHERE t.id NOT IN (SELECT id FROM hidden)
   UNION ALL
-  SELECT 'workSession', w.id, t.id, t.title, w.start_us, w.end_us, w.status, t.category_id, NULL
+  SELECT 'workSession', w.id, t.id, t.title, w.start_us, w.end_us, w.status, t.category_id, NULL,
+    w.zone_id, w.time_mode, w.start_local, w.zone_id, w.time_mode, w.end_local
   FROM work_sessions w JOIN range ON w.end_us > range.from_us AND w.start_us < range.until_us
   JOIN tasks t ON t.id = w.task_id
-  WHERE w.id NOT IN (SELECT id FROM hidden)
+  WHERE w.id NOT IN (SELECT id FROM hidden) AND w.status <> 'cancelled'
   UNION ALL
-  SELECT 'routine', r.id, r.id, p.title, r.start_us, r.end_us, r.status, p.category_id, NULL
+  SELECT 'routine', r.id, r.id, p.title, r.start_us, r.end_us, r.status, p.category_id, NULL,
+    NULL, NULL, NULL, NULL, NULL, NULL
   FROM routine_occurrences r JOIN range ON r.end_us > range.from_us AND r.start_us < range.until_us
   JOIN routines p ON p.id = r.routine_id
   WHERE r.id NOT IN (SELECT id FROM hidden)

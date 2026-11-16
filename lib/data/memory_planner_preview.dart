@@ -1,4 +1,5 @@
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -16,6 +17,9 @@ enum PreviewFixture {
 }
 
 class MemoryPlannerPreview implements PlannerPreviewRepository {
+  @override
+  TaskWorkspace? get taskWorkspace => null;
+
   MemoryPlannerPreview({
     required DateTime today,
     PreviewProfile? profile,

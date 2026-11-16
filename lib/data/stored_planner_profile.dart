@@ -1,6 +1,7 @@
 import 'package:routina/application/activity_calendar.dart';
 import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/application/task_workspace.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
@@ -22,12 +23,21 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   final Future<String> Function()? _readDeviceZone;
   final DateTime Function() _now;
   PlannerStore? _store;
+  Future<PlannerStore>? _opening;
   List<Category> _savedCategories = const [];
   List<PreviewEvent> _homeEvents = const [];
   String _deviceZone = 'UTC';
   int _confirmationDays = 30;
 
-  Future<PlannerStore> _database() async => _store ??= await _openStore();
+  Future<PlannerStore> _database() async {
+    if (_store case final store?) return store;
+    final opening = _opening ??= _openStore();
+    try {
+      return _store ??= await opening;
+    } finally {
+      if (identical(_opening, opening)) _opening = null;
+    }
+  }
 
   CalendarZones get _zones => CalendarZones(
     deviceZoneId: _deviceZone,
@@ -40,6 +50,22 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     categories: categories,
     now: _now,
   );
+
+  @override
+  late final TaskWorkspace taskWorkspace = TaskWorkspace(
+    openStore: () async {
+      await _refreshDeviceZone();
+      return _database();
+    },
+    openCalendar: _calendar,
+    readZones: () => _zones,
+    now: _now,
+  );
+
+  Future<void> _refreshDeviceZone() async {
+    final readZone = _readDeviceZone;
+    if (readZone != null) _deviceZone = await readZone();
+  }
 
   @override
   bool get usesStoredCalendar => true;
@@ -55,10 +81,10 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   List<PreviewEvent> get events => [..._homeEvents, ...super.events];
 
   @override
-  Future<List<PreviewEvent>> readCalendar(
-    DateTime from,
-    DateTime until,
-  ) async => (await _calendar()).read(from, until);
+  Future<List<PreviewEvent>> readCalendar(DateTime from, DateTime until) async {
+    await _refreshDeviceZone();
+    return (await _calendar()).read(from, until);
+  }
 
   @override
   Future<List<ScheduleWarning>> activityWarnings(
@@ -104,8 +130,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   @override
   Future<void> load(PreviewSurface surface) async {
     if (surface == PreviewSurface.startup || surface == PreviewSurface.home) {
-      final readZone = _readDeviceZone;
-      if (readZone != null) _deviceZone = await readZone();
+      await _refreshDeviceZone();
     }
     if (surface == PreviewSurface.startup) {
       final store = await _database();

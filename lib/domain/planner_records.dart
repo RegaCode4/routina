@@ -470,6 +470,8 @@ class CalendarEntry {
     this.end,
     this.categoryId,
     this.availability,
+    this.startTime,
+    this.endTime,
   });
 
   final CalendarEntryKind kind;
@@ -485,4 +487,6 @@ class CalendarEntry {
   final ActivityStatus status;
   final String? categoryId;
   final EventAvailability? availability;
+  final ZonedTime? startTime;
+  final ZonedTime? endTime;
 }

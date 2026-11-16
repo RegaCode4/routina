@@ -66,6 +66,12 @@ NeoStatus? badgeFor(PreviewEventState state) => switch (state) {
   _ => null,
 };
 
+NeoStatus? agendaStatus(PreviewEvent entry) =>
+    entry.kind == PreviewKind.deadline &&
+        entry.state == PreviewEventState.pending
+    ? NeoStatus.overdue
+    : badgeFor(entry.state);
+
 String warningTitle(ScheduleWarning warning) => switch (warning) {
   ScheduleWarning.overlap => 'Jadwal bertabrakan',
   ScheduleWarning.buffer => 'Jeda belum terpenuhi',

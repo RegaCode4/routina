@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
@@ -19,6 +20,9 @@ import 'package:routina/presentation/demo/routines.dart';
 import 'package:routina/presentation/demo/settings.dart';
 import 'package:routina/presentation/demo/statistics.dart';
 import 'package:routina/presentation/demo/tasks.dart';
+import 'package:routina/presentation/tasks/task_detail.dart';
+import 'package:routina/presentation/tasks/task_editor.dart';
+import 'package:routina/presentation/tasks/task_list.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -75,6 +79,15 @@ class _AppShellState extends State<AppShell> {
       });
 
   Future<void> _open(PreviewEvent entry) async {
+    if (widget.repository.taskWorkspace != null &&
+        (entry.kind == PreviewKind.deadline ||
+            entry.kind == PreviewKind.session)) {
+      await _openTask(
+        entry.obligationId ?? entry.id,
+        sessionId: entry.kind == PreviewKind.session ? entry.id : null,
+      );
+      return;
+    }
     final task = _demo.taskFor(entry.id);
     final routine = _demo.routines
         .where((routine) => routine.id == entry.id)
@@ -112,7 +125,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> _confirm(PreviewEvent entry) async {
-    if (_demo.taskFor(entry.id) != null ||
+    if (entry.kind == PreviewKind.deadline ||
+        entry.kind == PreviewKind.session ||
+        _demo.taskFor(entry.id) != null ||
         _demo.routines.any((item) => item.id == entry.id)) {
       await _open(entry);
       return;
@@ -137,6 +152,40 @@ class _AppShellState extends State<AppShell> {
 
   void _stats() =>
       openDemo<void>(context, DemoStatistics(_demo), route: '/statistik');
+
+  Future<void> _openTask(String id, {String? sessionId}) async {
+    final workspace = widget.repository.taskWorkspace;
+    if (workspace == null) return;
+    await openDemo<void>(
+      context,
+      TaskDetail(
+        repository: widget.repository,
+        workspace: workspace,
+        id: id,
+        onChanged: _refresh,
+        initialSessionId: sessionId,
+      ),
+    );
+  }
+
+  Future<void> _addTask() async {
+    final workspace = widget.repository.taskWorkspace;
+    if (workspace == null) {
+      await openDemo<void>(context, DemoTaskEditor(_demo, DemoTask()));
+      return;
+    }
+    final saved = await openDemo<Task>(
+      context,
+      TaskEditor(repository: widget.repository, workspace: workspace),
+    );
+    if (mounted && saved != null) {
+      setState(() {
+        _tab = RoutinaTab.tasks;
+        _revision++;
+      });
+      demoFeedback(context, 'Tugas tersimpan.');
+    }
+  }
 
   Future<void> _activity([DateTime? day]) async {
     final saved = await Navigator.of(context).push<PreviewEvent>(
@@ -173,7 +222,7 @@ class _AppShellState extends State<AppShell> {
         case _AddOption.activity:
           await _activity();
         case _AddOption.task:
-          await openDemo<void>(context, DemoTaskEditor(_demo, DemoTask()));
+          await _addTask();
         case _AddOption.routine:
           await openDemo<void>(
             context,
@@ -211,7 +260,16 @@ class _AppShellState extends State<AppShell> {
               onOpen: _open,
               onAdd: _activity,
             ),
-            DemoTasks(_demo),
+            if (widget.repository.taskWorkspace case final workspace?)
+              TaskList(
+                repository: widget.repository,
+                workspace: workspace,
+                revision: _revision,
+                onOpen: _openTask,
+                onAdd: _addTask,
+              )
+            else
+              DemoTasks(_demo),
             DemoRoutines(_demo),
             DemoProfile(_demo),
           ],

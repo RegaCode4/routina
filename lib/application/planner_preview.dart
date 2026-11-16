@@ -1,3 +1,4 @@
+import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -20,6 +21,7 @@ abstract interface class PlannerPreviewRepository {
   List<PreviewEvent> get homeEntries;
   List<Category> get categories;
   bool get usesStoredCalendar;
+  TaskWorkspace? get taskWorkspace;
   String get calendarZoneLabel;
 
   Future<void> load(PreviewSurface surface);

@@ -176,7 +176,7 @@ class DemoTrash {
 /// Session-only fixtures and mutations for interactive previews on SC-11–30.
 class DemoSession extends ChangeNotifier {
   DemoSession(this.planner, this.scenario) {
-    if (feed('tasks') != DemoFeed.empty) {
+    if (planner.taskWorkspace == null && feed('tasks') != DemoFeed.empty) {
       tasks.addAll([
         DemoTask(
           id: 'deadline',
