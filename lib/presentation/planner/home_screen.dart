@@ -1,0 +1,412 @@
+import 'package:flutter/material.dart';
+import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/preview_event.dart';
+import 'package:routina/presentation/design_system/neo_badges.dart';
+import 'package:routina/presentation/design_system/neo_button.dart';
+import 'package:routina/presentation/design_system/neo_card.dart';
+import 'package:routina/presentation/design_system/neo_overlays.dart';
+import 'package:routina/presentation/design_system/neo_tokens.dart';
+import 'package:routina/presentation/design_system/planner_cards.dart';
+import 'package:routina/presentation/planner/preview_ui.dart';
+
+class PlannerHome extends StatefulWidget {
+  const PlannerHome({
+    required this.repository,
+    required this.onOpen,
+    required this.onConfirm,
+    required this.onCalendar,
+    required this.onStats,
+    required this.onAdd,
+    super.key,
+  });
+  final PlannerPreviewRepository repository;
+  final ValueChanged<PreviewEvent> onOpen;
+  final ValueChanged<PreviewEvent> onConfirm;
+  final VoidCallback onCalendar;
+  final VoidCallback onStats;
+  final VoidCallback onAdd;
+
+  @override
+  State<PlannerHome> createState() => _PlannerHomeState();
+}
+
+class _PlannerHomeState extends State<PlannerHome> {
+  late Future<void> _load = widget.repository.load(PreviewSurface.home);
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = widget.repository.profile!;
+    final name = profile.name.trim();
+    final date = widget.repository.today;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        NeoSpace.page,
+        NeoSpace.page,
+        NeoSpace.page,
+        NeoSize.fab + NeoSpace.section,
+      ),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    dateLabel(date, long: true, year: true).toUpperCase(),
+                    style: NeoType.badge.copyWith(color: NeoColors.muted),
+                  ),
+                  const SizedBox(height: NeoSpace.xxs),
+                  Text(
+                    name.isEmpty ? 'Halo!' : 'Halo, $name.',
+                    style: NeoType.display.copyWith(fontSize: 36),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: NeoSpace.sm),
+            NeoIconButton(
+              icon: profile.notifications
+                  ? Icons.notifications_none
+                  : Icons.notifications_off_outlined,
+              label: 'Pengingat',
+              indicator: widget.repository.events.any(
+                (entry) => entry.state == PreviewEventState.pending,
+              ),
+              onPressed: () => _reminders(context),
+            ),
+          ],
+        ),
+        const SizedBox(height: NeoSpace.sm),
+        FutureBuilder<void>(
+          future: _load,
+          builder: (context, snapshot) {
+            final loading = snapshot.connectionState != ConnectionState.done;
+            if (loading || snapshot.hasError) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _HomeKpis(onStats: widget.onStats),
+                  const SizedBox(height: NeoSpace.page),
+                  PreviewNotice(
+                    title: loading ? 'Memuat agenda' : 'Agenda belum tersedia',
+                    message: loading
+                        ? 'Sedang membaca aktivitas hari ini.'
+                        : 'Coba lagi untuk membaca aktivitas contoh.',
+                    loading: loading,
+                    warning: snapshot.hasError,
+                    icon: Icons.error_outline,
+                    button: snapshot.hasError
+                        ? NeoButton(
+                            label: 'Muat ulang',
+                            onPressed: () {
+                              final retry = widget.repository.load(
+                                PreviewSurface.home,
+                              );
+                              setState(() {
+                                _load = retry;
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                ],
+              );
+            }
+            return _agenda(
+              profile,
+              DailyPreview(widget.repository.events, date),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _agenda(PreviewProfile profile, DailyPreview daily) {
+    final pending = daily.agenda
+        .where(
+          (entry) =>
+              entry.kind == PreviewKind.activity &&
+              entry.state == PreviewEventState.pending,
+        )
+        .toList();
+    final conflicted = daily.agenda
+        .where((entry) => entry.warning == ScheduleWarning.overlap)
+        .firstOrNull;
+    final overdue = widget.repository.events
+        .where(
+          (entry) =>
+              entry.kind == PreviewKind.deadline &&
+              entry.state == PreviewEventState.pending &&
+              entry.start.isBefore(widget.repository.today),
+        )
+        .toList();
+    final next = daily.next;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _HomeKpis(daily: daily, onStats: widget.onStats),
+        const SizedBox(height: NeoSpace.page),
+        if (next != null) ...[
+          const Text('KEGIATAN TERDEKAT', style: NeoType.badge),
+          const SizedBox(height: NeoSpace.xs),
+          ActivityCard(
+            title: next.title,
+            time: dateOnly(next.start) == widget.repository.today
+                ? 'Hari ini · ${eventTime(next)} WIB'
+                : '${dateLabel(next.start)} · ${eventTime(next)}',
+            highlighted: true,
+            onTap: () => widget.onOpen(next),
+          ),
+          const SizedBox(height: NeoSpace.md),
+        ],
+        if (!profile.notifications) ...[
+          PreviewNotice(
+            title: 'Notifikasi nonaktif',
+            message: 'Pengingat tetap tersedia di Home.',
+            icon: Icons.notifications_off_outlined,
+            warning: true,
+            button: NeoButton(
+              label: 'Lihat pengingat',
+              variant: NeoButtonVariant.secondary,
+              onPressed: () => _reminders(context),
+            ),
+          ),
+          const SizedBox(height: NeoSpace.md),
+        ],
+        if (conflicted != null) ...[
+          PreviewNotice(
+            title: '${conflicted.title} bentrok',
+            message:
+                '${eventTime(conflicted)} · Ada kegiatan yang tumpang tindih.',
+            icon: Icons.warning_amber_rounded,
+            warning: true,
+          ),
+          const SizedBox(height: NeoSpace.md),
+        ],
+        if (overdue.isNotEmpty) ...[
+          PreviewNotice(
+            title: '${overdue.length} tugas overdue',
+            message: overdue
+                .map(
+                  (entry) =>
+                      '${entry.title} · ${dateLabel(entry.start)} ${eventTime(entry)}',
+                )
+                .join('\n'),
+            icon: Icons.warning_amber_rounded,
+            warning: true,
+          ),
+          const SizedBox(height: NeoSpace.md),
+        ],
+        if (pending.isNotEmpty) ...[
+          const Text('Menunggu Konfirmasi', style: NeoType.section),
+          const SizedBox(height: NeoSpace.xs),
+          for (final entry in pending)
+            Padding(
+              padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+              child: ActivityCard(
+                title: entry.title,
+                time: '${eventTime(entry)} · Sudah berakhir',
+                status: NeoStatus.pending,
+                onTap: () => widget.onConfirm(entry),
+              ),
+            ),
+          const SizedBox(height: NeoSpace.xs),
+        ] else if (daily.total > 0 && daily.open == 0) ...[
+          const PreviewNotice(
+            title: 'Semua aktivitas selesai',
+            message: 'Semua aktivitas hari ini sudah dikonfirmasi selesai.',
+            icon: Icons.check_circle_outline,
+          ),
+          const SizedBox(height: NeoSpace.md),
+        ],
+        if (daily.agenda.isEmpty)
+          PreviewNotice(
+            title: 'Agenda masih kosong',
+            message: 'Tambahkan kegiatan, tugas, atau rutinitas untuk memulai.',
+            icon: Icons.event_busy_outlined,
+            button: NeoButton(
+              label: 'Tambah aktivitas',
+              onPressed: widget.onAdd,
+            ),
+          )
+        else ...[
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Agenda hari ini', style: NeoType.section),
+              ),
+              TextButton(
+                onPressed: widget.onCalendar,
+                child: const Text('Lihat kalender'),
+              ),
+            ],
+          ),
+          for (final entry in daily.agenda)
+            Padding(
+              padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+              child: ActivityCard(
+                title: entry.title,
+                time: dateOnly(entry.start) == widget.repository.today
+                    ? eventTime(entry)
+                    : '${eventTime(entry)} · Lintas hari',
+                category: entry.options.category.isEmpty
+                    ? null
+                    : entry.options.category,
+                recurring: entry.series != null,
+                status: badgeFor(entry.state),
+                onTap: () => widget.onOpen(entry),
+              ),
+            ),
+          Text(
+            'Waktu ditampilkan dalam WIB.',
+            style: NeoType.caption.copyWith(color: NeoColors.muted),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _reminders(BuildContext context) => showNeoBottomSheet<void>(
+    context,
+    builder: (_) => NeoBottomSheet(
+      title: 'Pengingat',
+      description: widget.repository.profile!.notifications
+          ? 'Aktivitas yang menunggu konfirmasi.'
+          : 'Notifikasi nonaktif. Pengingat tetap tersedia di Home.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final entry in widget.repository.events.where(
+            (entry) =>
+                entry.kind == PreviewKind.activity &&
+                entry.state == PreviewEventState.pending,
+          ))
+            Padding(
+              padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+              child: ActivityCard(
+                title: entry.title,
+                time: eventTime(entry),
+                status: NeoStatus.pending,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  widget.onConfirm(entry);
+                },
+              ),
+            ),
+          if (!widget.repository.events.any(
+            (entry) =>
+                entry.kind == PreviewKind.activity &&
+                entry.state == PreviewEventState.pending,
+          ))
+            const Text('Belum ada pengingat.'),
+        ],
+      ),
+    ),
+  );
+}
+
+class _HomeKpis extends StatelessWidget {
+  const _HomeKpis({this.daily, required this.onStats});
+  final DailyPreview? daily;
+  final VoidCallback onStats;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = daily?.progress;
+    final narrow = MediaQuery.of(context).size.width < 360;
+    final enlarged = MediaQuery.textScalerOf(context).scale(14) > 19;
+    return NeoCard(
+      tone: NeoCardTone.accent,
+      emphasis: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: NeoSpace.xs,
+            runSpacing: NeoSpace.xs,
+            children: [
+              const Text('Penyelesaian hari ini', style: NeoType.item),
+              NeoButton(
+                label: 'Statistik',
+                icon: Icons.bar_chart,
+                variant: NeoButtonVariant.secondary,
+                onPressed: onStats,
+              ),
+            ],
+          ),
+          const SizedBox(height: NeoSpace.xs),
+          if (progress == null)
+            Text(
+              daily == null ? '—' : 'Tidak Ada Aktivitas',
+              style: NeoType.section,
+            )
+          else ...[
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: NeoSpace.xs,
+              runSpacing: NeoSpace.xs,
+              children: [
+                Text(
+                  '${(progress * 100).round()}%',
+                  style: NeoType.metric.copyWith(
+                    fontSize: narrow || enlarged ? 42 : 58,
+                  ),
+                ),
+                Text(
+                  '${daily!.completed} dari ${daily!.total} selesai',
+                  style: NeoType.badge,
+                ),
+              ],
+            ),
+            const SizedBox(height: NeoSpace.xxs),
+            NeoProgressBar(
+              value: progress,
+              label: 'Penyelesaian hari ini',
+              onAccent: true,
+            ),
+          ],
+          const SizedBox(height: NeoSpace.md),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (index, label, value) in [
+                (0, 'Total', daily?.total),
+                (1, 'Selesai', daily?.completed),
+                (2, 'Belum selesai', daily?.open),
+              ])
+                Expanded(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: index == 0
+                          ? null
+                          : const Border(left: NeoLine.thin),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: index == 0 ? 0 : NeoSpace.xs,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            value?.toString() ?? '—',
+                            style: NeoType.metric.copyWith(fontSize: 24),
+                          ),
+                          Text(label, style: NeoType.badge),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

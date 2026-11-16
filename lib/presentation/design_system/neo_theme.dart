@@ -29,6 +29,9 @@ ThemeData buildNeoTheme() {
       labelSmall: NeoType.badge,
     ).apply(bodyColor: NeoColors.ink, displayColor: NeoColors.ink),
     iconTheme: const IconThemeData(color: NeoColors.ink),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: NeoColors.ink),
+    ),
     textSelectionTheme: const TextSelectionThemeData(
       cursorColor: NeoColors.ink,
       selectionColor: NeoColors.blueTint,

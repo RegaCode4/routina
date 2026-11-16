@@ -9,11 +9,14 @@ class NeoFormField extends StatelessWidget {
     this.errorText,
     this.icon,
     this.controller,
+    this.initialValue,
     this.focusNode,
     this.onChanged,
     this.validator,
     this.enabled = true,
     this.obscureText = false,
+    this.labelAbove = false,
+    this.maxLines = 1,
     this.keyboardType,
     super.key,
   });
@@ -24,32 +27,46 @@ class NeoFormField extends StatelessWidget {
   final String? errorText;
   final IconData? icon;
   final TextEditingController? controller;
+  final String? initialValue;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
   final FormFieldValidator<String>? validator;
   final bool enabled;
   final bool obscureText;
+  final bool labelAbove;
+  final int maxLines;
   final TextInputType? keyboardType;
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
+    final input = TextFormField(
       controller: controller,
+      initialValue: initialValue,
       focusNode: focusNode,
       onChanged: onChanged,
       validator: validator,
       enabled: enabled,
       obscureText: obscureText,
+      maxLines: maxLines,
       keyboardType: keyboardType,
       style: TextStyle(color: enabled ? NeoColors.ink : NeoColors.muted),
       decoration: InputDecoration(
-        labelText: label,
+        labelText: labelAbove ? null : label,
         hintText: hint,
         helperText: helper,
         errorText: errorText,
         prefixIcon: icon == null ? null : Icon(icon),
         fillColor: enabled ? null : NeoColors.disabled,
       ),
+    );
+    if (!labelAbove) return input;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ExcludeSemantics(child: Text(label, style: NeoType.badge)),
+        const SizedBox(height: NeoSpace.xxs),
+        Semantics(label: label, child: input),
+      ],
     );
   }
 }

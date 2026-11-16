@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:routina/application/read_today.dart';
-import 'package:routina/domain/result.dart';
+import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
 import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
+import 'package:routina/presentation/planner/calendar_screen.dart';
+import 'package:routina/presentation/planner/event_detail.dart';
+import 'package:routina/presentation/planner/event_editor.dart';
+import 'package:routina/presentation/planner/home_screen.dart';
+import 'package:routina/presentation/planner/preview_ui.dart';
+import 'package:routina/presentation/planner/setup_screens.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({required this.readToday, super.key});
-
-  final ReadToday readToday;
+  const AppShell({required this.repository, super.key});
+  final PlannerPreviewRepository repository;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -19,37 +24,101 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   RoutinaTab _tab = RoutinaTab.home;
   bool _addOpen = false;
-  late Result<DateTime> _today;
-  late final AppLifecycleListener _lifecycle;
+  DateTime? _requestedDay;
+  CalendarView _requestedView = CalendarView.month;
+  int _calendarSelection = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _today = widget.readToday();
-    _lifecycle = AppLifecycleListener(onResume: _refreshToday);
+  void _calendar(DateTime day, {CalendarView view = CalendarView.month}) =>
+      setState(() {
+        _requestedDay = day;
+        _requestedView = view;
+        _calendarSelection++;
+        _tab = RoutinaTab.calendar;
+      });
+
+  Future<void> _open(PreviewEvent entry) async {
+    if (entry.kind != PreviewKind.activity) {
+      await showNeoBottomSheet<void>(
+        context,
+        builder: (_) => NeoBottomSheet(
+          title: entry.title,
+          description: eventTime(entry),
+          child: Text(
+            entry.kind == PreviewKind.deadline
+                ? entry.options.zone
+                : entry.options.category,
+          ),
+        ),
+      );
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) =>
+              EventDetail(repository: widget.repository, id: entry.id),
+        ),
+      );
+    }
+    if (mounted) setState(() {});
   }
 
-  @override
-  void dispose() {
-    _lifecycle.dispose();
-    super.dispose();
+  Future<void> _confirm(PreviewEvent entry) async {
+    final result = await previewChoices(context, 'Bagaimana hasilnya?', [
+      PreviewEventState.done,
+      PreviewEventState.postponed,
+      PreviewEventState.skipped,
+    ], (value) => badgeFor(value)!.label);
+    if (!mounted || result == null) return;
+    setState(() => widget.repository.setEventState(entry.id, result));
+    if (result != PreviewEventState.done) await _open(entry);
   }
 
-  void _refreshToday() => setState(() => _today = widget.readToday());
+  void _stats() => Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      settings: const RouteSettings(name: '/statistik'),
+      builder: (_) =>
+          const PreviewPage(title: 'Statistik', body: _Unavailable()),
+    ),
+  );
+
+  Future<void> _profile() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PlannerProfileSetup(repository: widget.repository),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _activity([DateTime? day]) async {
+    final saved = await Navigator.of(context).push<PreviewEvent>(
+      MaterialPageRoute(
+        builder: (_) => EventEditor(
+          repository: widget.repository,
+          draft: EventDraft(date: day),
+        ),
+      ),
+    );
+    if (mounted && saved != null) {
+      _calendar(dateOnly(saved.start), view: CalendarView.day);
+    }
+  }
 
   Future<void> _openAdd() async {
     if (_addOpen) return;
     setState(() => _addOpen = true);
-
     try {
       final option = await showNeoBottomSheet<_AddOption>(
         context,
         builder: (_) => const _AddOptions(),
       );
       if (!mounted || option == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Formulir ${option.title} belum tersedia.')),
-      );
+      if (option == _AddOption.activity) {
+        await _activity();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Formulir ${option.title} belum tersedia.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _addOpen = false);
     }
@@ -57,21 +126,77 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = widget.repository.profile!;
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: Column(
+        child: IndexedStack(
+          index: _tab.index,
           children: [
-            AppHeader(title: _tab.label),
-            Expanded(
-              child: IndexedStack(
-                index: _tab.index,
-                children: [
-                  _HomeContent(today: _today, onRetry: _refreshToday),
-                  for (final _ in RoutinaTab.values.skip(1))
-                    const _UnavailableContent(hasFab: true),
-                ],
-              ),
+            PlannerHome(
+              repository: widget.repository,
+              onOpen: _open,
+              onConfirm: _confirm,
+              onCalendar: () => _calendar(widget.repository.today),
+              onStats: _stats,
+              onAdd: _openAdd,
+            ),
+            PlannerCalendar(
+              repository: widget.repository,
+              requestedDay: _requestedDay,
+              requestedView: _requestedView,
+              selection: _calendarSelection,
+              onOpen: _open,
+              onAdd: _activity,
+            ),
+            const Column(
+              children: [
+                AppHeader(title: 'To-Do List'),
+                Expanded(child: _Unavailable()),
+              ],
+            ),
+            const Column(
+              children: [
+                AppHeader(title: 'Rutinitas'),
+                Expanded(child: _Unavailable()),
+              ],
+            ),
+            Column(
+              children: [
+                const AppHeader(title: 'Profil'),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.all(NeoSpace.page),
+                    children: [
+                      NeoCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              profile.name.isEmpty
+                                  ? 'Profil lokal'
+                                  : profile.name,
+                              style: NeoType.title,
+                            ),
+                            const SizedBox(height: NeoSpace.xs),
+                            Text(
+                              'Awal minggu · ${profile.sundayFirst ? 'Minggu' : 'Senin'}',
+                            ),
+                            Text(
+                              'Pengingat · ${profile.notifications ? 'Aktif pada pratinjau' : 'Nonaktif'}',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: NeoSpace.md),
+                      NeoButton(
+                        label: 'Ubah profil dan preferensi',
+                        onPressed: _profile,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -91,86 +216,13 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-class _HomeContent extends StatelessWidget {
-  const _HomeContent({required this.today, required this.onRetry});
-
-  final Result<DateTime> today;
-  final VoidCallback onRetry;
-
+class _Unavailable extends StatelessWidget {
+  const _Unavailable();
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        NeoSpace.page,
-        NeoSpace.md,
-        NeoSpace.page,
-        NeoSize.fab + NeoSpace.section,
-      ),
-      children: [
-        switch (today) {
-          Success(:final value) => Text(
-            MaterialLocalizations.of(context).formatFullDate(value),
-            style: NeoType.caption.copyWith(color: NeoColors.muted),
-          ),
-          Failure() => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Tanggal perangkat belum dapat ditampilkan.'),
-              const SizedBox(height: NeoSpace.xs),
-              NeoButton(
-                label: 'Coba lagi',
-                variant: NeoButtonVariant.secondary,
-                onPressed: onRetry,
-              ),
-            ],
-          ),
-        },
-        const SizedBox(height: NeoSpace.md),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: NeoButton(
-            icon: Icons.bar_chart,
-            label: 'Statistik',
-            variant: NeoButtonVariant.secondary,
-            onPressed: () => Navigator.of(context).push<void>(
-              MaterialPageRoute<void>(
-                settings: const RouteSettings(name: '/statistik'),
-                builder: (_) => const Scaffold(
-                  body: SafeArea(
-                    child: Column(
-                      children: [
-                        AppHeader(title: 'Statistik', showBack: true),
-                        Expanded(child: _UnavailableContent()),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _UnavailableContent extends StatelessWidget {
-  const _UnavailableContent({this.hasFab = false});
-
-  final bool hasFab;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        NeoSpace.page,
-        NeoSpace.md,
-        NeoSpace.page,
-        hasFab ? NeoSize.fab + NeoSpace.section : NeoSpace.page,
-      ),
-      children: const [Text('Fitur halaman ini belum tersedia.')],
-    );
-  }
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(NeoSpace.page),
+    children: const [Text('Fitur halaman ini belum tersedia.')],
+  );
 }
 
 enum _AddOption {
@@ -194,7 +246,6 @@ enum _AddOption {
   );
 
   const _AddOption(this.title, this.description, this.icon, this.color);
-
   final String title;
   final String description;
   final IconData icon;
@@ -203,63 +254,58 @@ enum _AddOption {
 
 class _AddOptions extends StatelessWidget {
   const _AddOptions();
-
   @override
-  Widget build(BuildContext context) {
-    return NeoBottomSheet(
-      title: 'Tambah aktivitas',
-      description: 'Pilih jenis yang ingin kamu tambahkan.',
-      showClose: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final option in _AddOption.values) ...[
-            NeoCard(
-              dense: true,
-              onTap: () => Navigator.of(context).pop(option),
-              child: Row(
-                children: [
-                  ExcludeSemantics(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: option.color,
-                        borderRadius: NeoRadius.input,
-                      ),
-                      child: SizedBox.square(
-                        dimension: NeoSize.cardIcon,
-                        child: Icon(option.icon, color: NeoColors.ink),
-                      ),
+  Widget build(BuildContext context) => NeoBottomSheet(
+    title: 'Tambah aktivitas',
+    description: 'Pilih jenis yang ingin kamu tambahkan.',
+    showClose: false,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final option in _AddOption.values) ...[
+          NeoCard(
+            dense: true,
+            onTap: () => Navigator.of(context).pop(option),
+            child: Row(
+              children: [
+                ExcludeSemantics(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: option.color,
+                      borderRadius: NeoRadius.input,
+                    ),
+                    child: SizedBox.square(
+                      dimension: NeoSize.cardIcon,
+                      child: Icon(option.icon, color: NeoColors.ink),
                     ),
                   ),
-                  const SizedBox(width: NeoSpace.sm),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Tambah ${option.title}', style: NeoType.item),
-                        Text(
-                          option.description,
-                          style: NeoType.caption.copyWith(
-                            color: NeoColors.muted,
-                          ),
-                        ),
-                      ],
-                    ),
+                ),
+                const SizedBox(width: NeoSpace.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tambah ${option.title}', style: NeoType.item),
+                      Text(
+                        option.description,
+                        style: NeoType.caption.copyWith(color: NeoColors.muted),
+                      ),
+                    ],
                   ),
-                  const ExcludeSemantics(child: Icon(Icons.chevron_right)),
-                ],
-              ),
+                ),
+                const ExcludeSemantics(child: Icon(Icons.chevron_right)),
+              ],
             ),
-            const SizedBox(height: NeoSpace.xs),
-          ],
-          const SizedBox(height: NeoSpace.md),
-          NeoButton(
-            label: 'Batal',
-            variant: NeoButtonVariant.secondary,
-            onPressed: () => Navigator.of(context).pop(),
           ),
+          const SizedBox(height: NeoSpace.xs),
         ],
-      ),
-    );
-  }
+        const SizedBox(height: NeoSpace.md),
+        NeoButton(
+          label: 'Batal',
+          variant: NeoButtonVariant.secondary,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ],
+    ),
+  );
 }
