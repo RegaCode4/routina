@@ -336,7 +336,18 @@ class ActivityCalendar {
     bool overlaps(_Entry event) =>
         event.start.isBefore(utcEnd) && event.end.isAfter(utcStart);
 
-    final result = [...snapshot.active.values.map(_project).where(overlaps)];
+    final routineDays = await data.routineOccurrences.all();
+    final visibleRoutineIds = routineDays.map((row) => row.id).toSet();
+    final result = [
+      ...snapshot.active.values
+          .where(
+            (event) =>
+                event.routineOccurrenceId == null ||
+                visibleRoutineIds.contains(event.routineOccurrenceId),
+          )
+          .map(_project)
+          .where(overlaps),
+    ];
     final keys = {
       for (final event in snapshot.all)
         if (event.seriesId != null) (event.seriesId, event.recurrenceKey),
@@ -416,6 +427,36 @@ class ActivityCalendar {
         after: buffer,
       );
       if (overlaps(projected)) result.add(projected);
+    }
+    final tracking = routineDays.where((row) => row.schedule == null).toList();
+    if (tracking.isNotEmpty) {
+      final routines = {
+        for (final row in await data.routines.all()) row.id: row,
+      };
+      for (final row in tracking) {
+        final routine = routines[row.routineId];
+        if (routine == null) continue;
+        final day = civilDate(DateTime.parse(row.day.value));
+        final entry = CalendarEntry(
+          kind: CalendarEntryKind.routine,
+          id: row.id,
+          obligationId: row.id,
+          title: routine.title,
+          start: zones.instant(day, zones.displayId),
+          end: zones.instant(day.add(const Duration(days: 1)), zones.displayId),
+          status: row.status,
+          categoryId: routine.categoryId,
+          availability: EventAvailability.allDayFree,
+        );
+        final projected = _Entry(
+          id: row.id,
+          title: routine.title,
+          start: entry.start,
+          end: entry.end!,
+          other: entry,
+        );
+        if (overlaps(projected)) result.add(projected);
+      }
     }
     return result;
   }
@@ -688,6 +729,8 @@ class ActivityCalendar {
     for (final entry in existing) {
       if (entry.other?.kind == CalendarEntryKind.deadline ||
           entry.other?.status == ActivityStatus.cancelled ||
+          entry.other?.status == ActivityStatus.skipped ||
+          entry.other?.availability == EventAvailability.allDayFree ||
           entry.event?.availability == EventAvailability.allDayFree ||
           entry.event?.status == ActivityStatus.cancelled ||
           entry.event?.status == ActivityStatus.postponed ||
@@ -810,8 +853,9 @@ class ActivityCalendar {
     final warning = ScheduleWarning.values
         .where((item) => event?.details.warnings.contains(item.name) ?? false)
         .firstOrNull;
-    final allDay =
-        event != null && event.availability != EventAvailability.timed;
+    final availability =
+        event?.availability ?? other?.availability ?? EventAvailability.timed;
+    final allDay = availability != EventAvailability.timed;
     DateTime editorWall(ZonedTime value) =>
         allDay || value.localWallTime != null
         ? civilTime(
@@ -840,7 +884,7 @@ class ActivityCalendar {
       obligationId: event?.routineOccurrenceId ?? other?.obligationId,
       warning: warning,
       options: EventOptions(
-        availability: DayAvailability.values[event?.availability.index ?? 0],
+        availability: DayAvailability.values[availability.index],
         category: category?.name ?? '',
         categoryColor: event?.details.color ?? 'Biru',
         description: event?.description ?? '',

@@ -1,13 +1,14 @@
 import 'package:routina/application/activity_calendar.dart';
 import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 
-/// Durable settings and activities alongside opt-in task and routine previews.
+/// Durable settings, activities, tasks and routines.
 class StoredPlannerProfile extends MemoryPlannerPreview {
   StoredPlannerProfile({
     required super.today,
@@ -59,6 +60,18 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     },
     openCalendar: _calendar,
     readZones: () => _zones,
+    now: _now,
+  );
+
+  @override
+  late final RoutineWorkspace routineWorkspace = RoutineWorkspace(
+    openStore: () async {
+      await _refreshDeviceZone();
+      return _database();
+    },
+    openCalendar: _calendar,
+    readZones: () => _zones,
+    sundayFirst: () => profile?.sundayFirst ?? false,
     now: _now,
   );
 

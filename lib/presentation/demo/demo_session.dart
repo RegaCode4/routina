@@ -254,7 +254,8 @@ class DemoSession extends ChangeNotifier {
           ..time = minutesAt(deadline.start);
       }
     }
-    if (feed('routines') != DemoFeed.empty) {
+    if (planner.routineWorkspace == null &&
+        feed('routines') != DemoFeed.empty) {
       final reading = DemoRoutine(
         id: 'study',
         title: 'Belajar Flutter',

@@ -1,3 +1,4 @@
+import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
@@ -22,6 +23,7 @@ abstract interface class PlannerPreviewRepository {
   List<Category> get categories;
   bool get usesStoredCalendar;
   TaskWorkspace? get taskWorkspace;
+  RoutineWorkspace? get routineWorkspace;
   String get calendarZoneLabel;
 
   Future<void> load(PreviewSurface surface);
@@ -113,21 +115,24 @@ class DailyPreview {
               )
               .toList()
             ..sort((a, b) => a.start.compareTo(b.start)) {
-    final obligations = agenda
-        .where(
-          (entry) =>
-              entry.kind != PreviewKind.session &&
-              dateOnly(entry.start) == dateOnly(day),
-        )
-        .toList();
-    total = obligations
-        .map((entry) => entry.obligationId ?? entry.id)
-        .toSet()
-        .length;
-    completed = obligations
+    final obligations = <String, PreviewEvent>{};
+    for (final entry in agenda) {
+      if (entry.kind == PreviewKind.session ||
+          dateOnly(entry.start) != dateOnly(day)) {
+        continue;
+      }
+      final id = entry.obligationId ?? entry.id;
+      final primary = obligations[id];
+      if (primary == null ||
+          entry.kind == PreviewKind.routine ||
+          (primary.kind != PreviewKind.routine &&
+              entry.state == PreviewEventState.done)) {
+        obligations[id] = entry;
+      }
+    }
+    total = obligations.length;
+    completed = obligations.values
         .where((entry) => entry.state == PreviewEventState.done)
-        .map((entry) => entry.obligationId ?? entry.id)
-        .toSet()
         .length;
     final upcoming =
         entries

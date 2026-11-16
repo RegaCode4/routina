@@ -45,6 +45,9 @@ String clockLabel(int minutes) =>
     '${(minutes ~/ 60).toString().padLeft(2, '0')}.${(minutes % 60).toString().padLeft(2, '0')}';
 
 String eventTime(PreviewEvent event) {
+  if (event.kind == PreviewKind.routine && event.allDay) {
+    return 'Progres rutinitas';
+  }
   if (event.allDay) {
     return 'Sepanjang hari · ${event.options.availability == DayAvailability.busy ? 'Sibuk' : 'Tersedia'}';
   }

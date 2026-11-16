@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 4;
+const plannerSchemaVersion = 5;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -316,5 +318,44 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
     await db.execute(
       "ALTER TABLE event_occurrences ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
     );
+  }
+  if (from < 5 && to >= 5) {
+    await db.execute('ALTER TABLE routines ADD COLUMN preferred_time TEXT');
+    await db.execute('ALTER TABLE routines ADD COLUMN routine_time_mode TEXT');
+    await db.execute('ALTER TABLE routine_occurrences ADD COLUMN goal TEXT');
+    final existing = await db.rawQuery('''
+      SELECT o.id, r.target_type, r.target_amount, r.target_duration_us, r.checklist
+      FROM routine_occurrences o JOIN routines r ON o.routine_id = r.id
+      ''');
+    for (final row in existing) {
+      await db.update(
+        'routine_occurrences',
+        {
+          'goal': jsonEncode({
+            'type': row['target_type'],
+            'amount': row['target_amount'],
+            'durationUs': row['target_duration_us'],
+            'checklist': jsonDecode(row['checklist'] as String),
+          }),
+        },
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+    await db.execute('''
+      CREATE TABLE routine_timers (
+        occurrence_id TEXT PRIMARY KEY NOT NULL REFERENCES routine_occurrences(id),
+        id TEXT NOT NULL UNIQUE,
+        accumulated_us INTEGER NOT NULL CHECK (accumulated_us >= 0),
+        running_since_us INTEGER
+      )
+      ''');
+    await db.execute('''
+      CREATE TABLE routine_goal_events (
+        occurrence_id TEXT PRIMARY KEY NOT NULL REFERENCES routine_occurrences(id),
+        due_at_us INTEGER NOT NULL,
+        reached_at_us INTEGER CHECK (reached_at_us >= due_at_us)
+      )
+      ''');
   }
 }

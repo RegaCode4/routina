@@ -16,9 +16,12 @@ class DemoTrashScreen extends StatelessWidget {
 
   Future<List<(String, String, DateTime?)>> _storedItems() async {
     final taskItems = await demo.planner.taskWorkspace!.trash();
+    final routineItems = await demo.planner.routineWorkspace?.trash();
     final eventItems = await demo.planner.readTrashedActivities();
     return [
       for (final item in taskItems) (item.title, 'Tugas', item.deletedAt),
+      for (final item in routineItems ?? [])
+        (item.title, 'Rutinitas', item.deletedAt),
       for (final item in eventItems) (item.title, 'Kegiatan', null),
     ];
   }
@@ -227,7 +230,7 @@ class _LocalTrashState extends State<_LocalTrash> {
           else if (items.isEmpty)
             const PreviewNotice(
               title: 'Tempat Sampah kosong',
-              message: 'Tugas dan kegiatan yang dihapus akan muncul di sini.',
+              message: 'Aktivitas yang dihapus akan muncul di sini.',
             )
           else
             for (final (title, kind, removed) in items)

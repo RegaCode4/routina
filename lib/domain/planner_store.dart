@@ -25,6 +25,12 @@ abstract interface class PlannerData {
   RecordRepository<ReminderRule> get reminderRules;
   RecordReader<StatusHistory> get statusHistory;
   RecordReader<TrashEntry> get trashEntries;
+  Future<List<RoutineTimer>> routineTimers();
+  Future<void> saveRoutineTimer(RoutineTimer timer);
+  Future<void> removeRoutineTimer(String occurrenceId);
+  Future<List<RoutineGoalEvent>> routineGoalEvents();
+  Future<void> saveRoutineGoalEvent(RoutineGoalEvent event);
+  Future<void> removeRoutineGoalEvent(String occurrenceId);
 
   /// Calendar intervals overlap a half-open range. Deadlines are points.
   Future<List<CalendarEntry>> calendar(DateTime from, DateTime until);

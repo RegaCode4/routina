@@ -362,6 +362,8 @@ class Routine extends PlannerRecord {
     this.targetDuration,
     this.frequencyRule,
     this.categoryId,
+    this.preferredTime,
+    this.timeMode,
     List<String> checklist = const [],
   }) : checklist = List.unmodifiable(checklist);
 
@@ -371,6 +373,29 @@ class Routine extends PlannerRecord {
   final Duration? targetDuration;
   final String? frequencyRule;
   final String? categoryId;
+  final List<String> checklist;
+  final String? preferredTime;
+  final TimeMode? timeMode;
+
+  RoutineGoal get goal => RoutineGoal(
+    targetType,
+    amount: targetAmount,
+    duration: targetDuration,
+    checklist: checklist,
+  );
+}
+
+class RoutineGoal {
+  const RoutineGoal(
+    this.type, {
+    this.amount,
+    this.duration,
+    this.checklist = const [],
+  });
+
+  final RoutineTargetType type;
+  final int? amount;
+  final Duration? duration;
   final List<String> checklist;
 }
 
@@ -382,6 +407,7 @@ class RoutineOccurrence extends PlannerRecord {
     this.schedule,
     this.status = ActivityStatus.planned,
     this.recordedCount,
+    this.goal,
     List<String> checkedItems = const [],
   }) : checkedItems = List.unmodifiable(checkedItems);
 
@@ -391,6 +417,37 @@ class RoutineOccurrence extends PlannerRecord {
   final ActivityStatus status;
   final int? recordedCount;
   final List<String> checkedItems;
+  final RoutineGoal? goal;
+}
+
+class RoutineTimer {
+  const RoutineTimer({
+    required this.id,
+    required this.occurrenceId,
+    this.accumulated = Duration.zero,
+    this.runningSince,
+  });
+
+  final String id;
+  final String occurrenceId;
+  final Duration accumulated;
+  final DateTime? runningSince;
+
+  Duration elapsedAt(DateTime now) {
+    final since = runningSince;
+    return since == null || now.isBefore(since)
+        ? accumulated
+        : accumulated + now.difference(since);
+  }
+}
+
+/// A pending date is a forecast that can change while a timer is active.
+class RoutineGoalEvent {
+  const RoutineGoalEvent(this.occurrenceId, this.dueAt, {this.reachedAt});
+
+  final String occurrenceId;
+  final DateTime dueAt;
+  final DateTime? reachedAt;
 }
 
 class TimeLog extends PlannerRecord {

@@ -20,6 +20,8 @@ import 'package:routina/presentation/demo/routines.dart';
 import 'package:routina/presentation/demo/settings.dart';
 import 'package:routina/presentation/demo/statistics.dart';
 import 'package:routina/presentation/demo/tasks.dart';
+import 'package:routina/presentation/routines/routine_editor.dart';
+import 'package:routina/presentation/routines/routine_screens.dart';
 import 'package:routina/presentation/tasks/task_detail.dart';
 import 'package:routina/presentation/tasks/task_editor.dart';
 import 'package:routina/presentation/tasks/task_list.dart';
@@ -79,6 +81,18 @@ class _AppShellState extends State<AppShell> {
       });
 
   Future<void> _open(PreviewEvent entry) async {
+    if (widget.repository.routineWorkspace case final workspace?
+        when entry.kind == PreviewKind.routine) {
+      try {
+        final selected = await workspace.openOccurrence(entry.id);
+        if (mounted && selected != null) {
+          await _openRoutine(selected.routineId, selected.day);
+        }
+      } catch (_) {
+        if (mounted) demoFeedback(context, 'Rutinitas tidak dapat dibuka.');
+      }
+      return;
+    }
     if (widget.repository.taskWorkspace != null &&
         (entry.kind == PreviewKind.deadline ||
             entry.kind == PreviewKind.session)) {
@@ -127,6 +141,7 @@ class _AppShellState extends State<AppShell> {
   Future<void> _confirm(PreviewEvent entry) async {
     if (entry.kind == PreviewKind.deadline ||
         entry.kind == PreviewKind.session ||
+        entry.kind == PreviewKind.routine ||
         _demo.taskFor(entry.id) != null ||
         _demo.routines.any((item) => item.id == entry.id)) {
       await _open(entry);
@@ -187,6 +202,40 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  Future<void> _openRoutine(String id, DateTime day) async {
+    final workspace = widget.repository.routineWorkspace;
+    if (workspace == null) return;
+    await openDemo<void>(
+      context,
+      RoutineDetail(
+        repository: widget.repository,
+        workspace: workspace,
+        id: id,
+        day: day,
+        onChanged: _refresh,
+      ),
+    );
+  }
+
+  Future<void> _addRoutine() async {
+    final workspace = widget.repository.routineWorkspace;
+    if (workspace == null) {
+      await openDemo<void>(context, DemoRoutineEditor(_demo, DemoRoutine()));
+      return;
+    }
+    final saved = await openDemo<Routine>(
+      context,
+      RoutineEditor(repository: widget.repository, workspace: workspace),
+    );
+    if (mounted && saved != null) {
+      setState(() {
+        _tab = RoutinaTab.routines;
+        _revision++;
+      });
+      demoFeedback(context, 'Rutinitas tersimpan.');
+    }
+  }
+
   Future<void> _activity([DateTime? day]) async {
     final saved = await Navigator.of(context).push<PreviewEvent>(
       MaterialPageRoute(
@@ -224,10 +273,7 @@ class _AppShellState extends State<AppShell> {
         case _AddOption.task:
           await _addTask();
         case _AddOption.routine:
-          await openDemo<void>(
-            context,
-            DemoRoutineEditor(_demo, DemoRoutine()),
-          );
+          await _addRoutine();
       }
     } finally {
       if (mounted) setState(() => _addOpen = false);
@@ -270,7 +316,16 @@ class _AppShellState extends State<AppShell> {
               )
             else
               DemoTasks(_demo),
-            DemoRoutines(_demo),
+            if (widget.repository.routineWorkspace case final workspace?)
+              RoutineBoard(
+                repository: widget.repository,
+                workspace: workspace,
+                revision: _revision,
+                onOpen: _openRoutine,
+                onAdd: _addRoutine,
+              )
+            else
+              DemoRoutines(_demo),
             DemoProfile(_demo),
           ],
         ),

@@ -146,6 +146,77 @@ class _SqliteData implements PlannerData {
     _trash,
   );
 
+  static const _visibleRoutineData =
+      'occurrence_id NOT IN (SELECT id FROM hidden_records)';
+
+  @override
+  Future<List<RoutineTimer>> routineTimers() async => [
+    for (final row in await _executor.query(
+      'routine_timers',
+      where: _visibleRoutineData,
+    ))
+      RoutineTimer(
+        id: row.text('id'),
+        occurrenceId: row.text('occurrence_id'),
+        accumulated: row.duration('accumulated_us')!,
+        runningSince: row.optionalInstant('running_since_us'),
+      ),
+  ];
+
+  @override
+  Future<void> saveRoutineTimer(RoutineTimer timer) => _write((db) async {
+    await _requireActive(db, timer.occurrenceId);
+    await db.insert('routine_timers', {
+      'id': timer.id,
+      'occurrence_id': timer.occurrenceId,
+      'accumulated_us': timer.accumulated.inMicroseconds,
+      'running_since_us': _instant(timer.runningSince),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  });
+
+  @override
+  Future<void> removeRoutineTimer(String occurrenceId) => _write((db) async {
+    await db.delete(
+      'routine_timers',
+      where: 'occurrence_id = ?',
+      whereArgs: [occurrenceId],
+    );
+  });
+
+  @override
+  Future<List<RoutineGoalEvent>> routineGoalEvents() async => [
+    for (final row in await _executor.query(
+      'routine_goal_events',
+      where: _visibleRoutineData,
+    ))
+      RoutineGoalEvent(
+        row.text('occurrence_id'),
+        row.instant('due_at_us'),
+        reachedAt: row.optionalInstant('reached_at_us'),
+      ),
+  ];
+
+  @override
+  Future<void> saveRoutineGoalEvent(RoutineGoalEvent event) =>
+      _write((db) async {
+        await _requireActive(db, event.occurrenceId);
+        await db.insert('routine_goal_events', {
+          'occurrence_id': event.occurrenceId,
+          'due_at_us': _instant(event.dueAt),
+          'reached_at_us': _instant(event.reachedAt),
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      });
+
+  @override
+  Future<void> removeRoutineGoalEvent(String occurrenceId) =>
+      _write((db) async {
+        await db.delete(
+          'routine_goal_events',
+          where: 'occurrence_id = ?',
+          whereArgs: [occurrenceId],
+        );
+      });
+
   @override
   Future<List<CalendarEntry>> calendar(DateTime from, DateTime until) async {
     if (!from.isBefore(until)) throw ArgumentError('Invalid calendar range');
@@ -523,7 +594,7 @@ SELECT * FROM (
   WHERE w.id NOT IN (SELECT id FROM hidden) AND w.status <> 'cancelled'
   UNION ALL
   SELECT 'routine', r.id, r.id, p.title, r.start_us, r.end_us, r.status, p.category_id, NULL,
-    NULL, NULL, NULL, NULL, NULL, NULL
+    r.zone_id, r.time_mode, r.start_local, r.zone_id, r.time_mode, r.end_local
   FROM routine_occurrences r JOIN range ON r.end_us > range.from_us AND r.start_us < range.until_us
   JOIN routines p ON p.id = r.routine_id
   WHERE r.id NOT IN (SELECT id FROM hidden)

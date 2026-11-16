@@ -385,6 +385,8 @@ final _routine = _Table<Routine>(
     'target_duration_us': value.targetDuration?.inMicroseconds,
     'frequency_rule': value.frequencyRule,
     'checklist': jsonEncode(value.checklist),
+    'preferred_time': value.preferredTime,
+    'routine_time_mode': value.timeMode?.name,
   },
   (meta, row) => Routine(
     meta,
@@ -395,6 +397,10 @@ final _routine = _Table<Routine>(
     targetDuration: row.duration('target_duration_us'),
     frequencyRule: row.optionalText('frequency_rule'),
     checklist: _readList(row, 'checklist'),
+    preferredTime: row.optionalText('preferred_time'),
+    timeMode: row['routine_time_mode'] == null
+        ? null
+        : TimeMode.values.byName(row.text('routine_time_mode')),
   ),
 );
 
@@ -407,6 +413,7 @@ final _routineOccurrence = _Table<RoutineOccurrence>(
     'status': value.status.name,
     'recorded_count': value.recordedCount,
     'checked_items': jsonEncode(value.checkedItems),
+    'goal': value.goal == null ? null : _encodeRoutineGoal(value.goal!),
     ..._interval(value.schedule),
   },
   (meta, row) => RoutineOccurrence(
@@ -417,9 +424,28 @@ final _routineOccurrence = _Table<RoutineOccurrence>(
     schedule: _readInterval(row),
     recordedCount: row.optionalNumber('recorded_count'),
     checkedItems: _readList(row, 'checked_items'),
+    goal: row['goal'] == null ? null : _decodeRoutineGoal(row.text('goal')),
   ),
   parent: (value) => value.routineId,
 );
+
+String _encodeRoutineGoal(RoutineGoal goal) => jsonEncode({
+  'type': goal.type.name,
+  'amount': goal.amount,
+  'durationUs': goal.duration?.inMicroseconds,
+  'checklist': goal.checklist,
+});
+
+RoutineGoal _decodeRoutineGoal(String source) {
+  final item = jsonDecode(source) as Map<String, dynamic>;
+  final micros = item['durationUs'] as int?;
+  return RoutineGoal(
+    RoutineTargetType.values.byName(item['type'] as String),
+    amount: item['amount'] as int?,
+    duration: micros == null ? null : Duration(microseconds: micros),
+    checklist: (item['checklist'] as List).cast<String>(),
+  );
+}
 
 final _timeLog = _Table<TimeLog>(
   'time_logs',
