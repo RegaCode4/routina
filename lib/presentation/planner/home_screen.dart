@@ -17,6 +17,7 @@ class PlannerHome extends StatefulWidget {
     required this.onCalendar,
     required this.onStats,
     required this.onAdd,
+    this.revision = 0,
     super.key,
   });
   final PlannerPreviewRepository repository;
@@ -25,6 +26,7 @@ class PlannerHome extends StatefulWidget {
   final VoidCallback onCalendar;
   final VoidCallback onStats;
   final VoidCallback onAdd;
+  final int revision;
 
   @override
   State<PlannerHome> createState() => _PlannerHomeState();
@@ -32,6 +34,15 @@ class PlannerHome extends StatefulWidget {
 
 class _PlannerHomeState extends State<PlannerHome> {
   late Future<void> _load = widget.repository.load(PreviewSurface.home);
+
+  @override
+  void didUpdateWidget(covariant PlannerHome oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.repository.usesStoredCalendar &&
+        oldWidget.revision != widget.revision) {
+      _load = widget.repository.load(PreviewSurface.home);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +81,7 @@ class _PlannerHomeState extends State<PlannerHome> {
                   ? Icons.notifications_none
                   : Icons.notifications_off_outlined,
               label: 'Pengingat',
-              indicator: widget.repository.events.any(
+              indicator: widget.repository.homeEntries.any(
                 (entry) => entry.state == PreviewEventState.pending,
               ),
               onPressed: () => _reminders(context),
@@ -92,7 +103,7 @@ class _PlannerHomeState extends State<PlannerHome> {
                     title: loading ? 'Memuat agenda' : 'Agenda belum tersedia',
                     message: loading
                         ? 'Sedang membaca aktivitas hari ini.'
-                        : 'Coba lagi untuk membaca aktivitas contoh.',
+                        : 'Coba lagi untuk membaca aktivitas.',
                     loading: loading,
                     warning: snapshot.hasError,
                     icon: Icons.error_outline,
@@ -115,7 +126,7 @@ class _PlannerHomeState extends State<PlannerHome> {
             }
             return _agenda(
               profile,
-              DailyPreview(widget.repository.events, date),
+              DailyPreview(widget.repository.homeEntries, date),
             );
           },
         ),
@@ -124,17 +135,20 @@ class _PlannerHomeState extends State<PlannerHome> {
   }
 
   Widget _agenda(PreviewProfile profile, DailyPreview daily) {
-    final pending = daily.agenda
-        .where(
-          (entry) =>
-              entry.kind == PreviewKind.activity &&
-              entry.state == PreviewEventState.pending,
-        )
-        .toList();
+    final pending =
+        (widget.repository.usesStoredCalendar
+                ? widget.repository.homeEntries.reversed
+                : daily.agenda)
+            .where(
+              (entry) =>
+                  entry.kind == PreviewKind.activity &&
+                  entry.state == PreviewEventState.pending,
+            )
+            .toList();
     final conflicted = daily.agenda
         .where((entry) => entry.warning == ScheduleWarning.overlap)
         .firstOrNull;
-    final overdue = widget.repository.events
+    final overdue = widget.repository.homeEntries
         .where(
           (entry) =>
               entry.kind == PreviewKind.deadline &&
@@ -154,7 +168,7 @@ class _PlannerHomeState extends State<PlannerHome> {
           ActivityCard(
             title: next.title,
             time: dateOnly(next.start) == widget.repository.today
-                ? 'Hari ini · ${eventTime(next)} WIB'
+                ? 'Hari ini · ${eventTime(next)}'
                 : '${dateLabel(next.start)} · ${eventTime(next)}',
             highlighted: true,
             onTap: () => widget.onOpen(next),
@@ -207,7 +221,8 @@ class _PlannerHomeState extends State<PlannerHome> {
               padding: const EdgeInsets.only(bottom: NeoSpace.xs),
               child: ActivityCard(
                 title: entry.title,
-                time: '${eventTime(entry)} · Sudah berakhir',
+                time:
+                    '${dateLabel(entry.start)} · ${eventTime(entry)} · Sudah berakhir',
                 status: NeoStatus.pending,
                 onTap: () => widget.onConfirm(entry),
               ),
@@ -221,6 +236,13 @@ class _PlannerHomeState extends State<PlannerHome> {
           ),
           const SizedBox(height: NeoSpace.md),
         ],
+        if (widget.repository.usesStoredCalendar)
+          TextButton(
+            onPressed: () async {
+              await _olderConfirmations(context);
+            },
+            child: const Text('Konfirmasi tanggal sebelumnya'),
+          ),
         if (daily.agenda.isEmpty)
           PreviewNotice(
             title: 'Agenda masih kosong',
@@ -260,11 +282,64 @@ class _PlannerHomeState extends State<PlannerHome> {
               ),
             ),
           Text(
-            'Waktu ditampilkan dalam WIB.',
+            'Zona tampilan · ${widget.repository.calendarZoneLabel}',
             style: NeoType.caption.copyWith(color: NeoColors.muted),
           ),
         ],
       ],
+    );
+  }
+
+  Future<void> _olderConfirmations(BuildContext context) async {
+    final previous = widget.repository.homeEntries
+        .map((entry) => entry.id)
+        .toSet();
+    try {
+      await widget.repository.loadEarlierConfirmations();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Konfirmasi sebelumnya belum dapat dibaca.'),
+          ),
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    final earlier = widget.repository.homeEntries
+        .where(
+          (entry) =>
+              !previous.contains(entry.id) &&
+              entry.kind == PreviewKind.activity &&
+              entry.state == PreviewEventState.pending,
+        )
+        .toList()
+        .reversed;
+    await showNeoBottomSheet<void>(
+      context,
+      builder: (sheet) => NeoBottomSheet(
+        title: 'Konfirmasi tanggal sebelumnya',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (earlier.isEmpty)
+              const Text(
+                'Tidak ada kegiatan yang menunggu pada rentang sebelumnya.',
+              ),
+            for (final item in earlier)
+              ActivityCard(
+                title: item.title,
+                time: '${dateLabel(item.start)} · ${eventTime(item)}',
+                status: NeoStatus.pending,
+                onTap: () {
+                  Navigator.pop(sheet);
+                  widget.onConfirm(item);
+                },
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -278,7 +353,7 @@ class _PlannerHomeState extends State<PlannerHome> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final entry in widget.repository.events.where(
+          for (final entry in widget.repository.homeEntries.where(
             (entry) =>
                 entry.kind == PreviewKind.activity &&
                 entry.state == PreviewEventState.pending,
@@ -295,7 +370,7 @@ class _PlannerHomeState extends State<PlannerHome> {
                 },
               ),
             ),
-          if (!widget.repository.events.any(
+          if (!widget.repository.homeEntries.any(
             (entry) =>
                 entry.kind == PreviewKind.activity &&
                 entry.state == PreviewEventState.pending,

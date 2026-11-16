@@ -69,6 +69,56 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   @override
   List<PreviewEvent> get events => List.unmodifiable(_events);
   @override
+  List<PreviewEvent> get homeEntries => events;
+  @override
+  bool get usesStoredCalendar => false;
+  @override
+  String get calendarZoneLabel => 'WIB · Asia/Jakarta';
+  @override
+  Future<List<PreviewEvent>> readCalendar(DateTime from, DateTime until) async {
+    await load(PreviewSurface.calendar);
+    return events;
+  }
+
+  @override
+  Future<void> loadEarlierConfirmations() async {}
+  @override
+  Future<DateTime?> suggestReplacement(PreviewEvent event) async => null;
+  @override
+  Future<List<PreviewEvent>> readTrashedActivities() async => events
+      .where((event) => event.state == PreviewEventState.trashed)
+      .toList();
+  @override
+  Future<List<ScheduleWarning>> activityWarnings(
+    PreviewEvent event, {
+    SeriesScope? scope,
+  }) async => previewWarnings(this, event);
+
+  @override
+  Future<PreviewEvent> saveActivity(
+    PreviewEvent event, {
+    SeriesScope? scope,
+    Set<ScheduleWarning> approved = const {},
+  }) async {
+    final warnings = previewWarnings(this, event);
+    if (!approved.containsAll(warnings)) throw ActivityWarnings(warnings);
+    return saveEvent(
+      event.withState(event.state, scheduleWarning: warnings.firstOrNull),
+      scope: scope,
+    );
+  }
+
+  @override
+  Future<PreviewEvent> changeActivity(
+    PreviewEvent event,
+    PreviewEventState state, {
+    SeriesScope? scope,
+  }) async {
+    setEventState(event.id, state, scope: scope);
+    return events.firstWhere((item) => item.id == event.id);
+  }
+
+  @override
   List<Category> get categories => List.unmodifiable(_categories);
   @override
   PreviewProfile? get profile => _profile;
@@ -209,6 +259,10 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
     options: options ?? event.options,
     series: series ?? event.series,
     warning: event.warning,
+    recurrenceKey: event.recurrenceKey,
+    supersedesId: event.supersedesId,
+    isException: event.isException,
+    obligationId: event.obligationId,
   );
 
   List<PreviewEvent> _samples(PreviewFixture fixture) {

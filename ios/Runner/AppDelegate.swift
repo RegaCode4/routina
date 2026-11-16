@@ -12,5 +12,16 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RoutinaDeviceTimeZone") {
+      FlutterMethodChannel(
+        name: "routina/device_time_zone", binaryMessenger: registrar.messenger()
+      ).setMethodCallHandler { call, result in
+        if call.method == "identifier" {
+          result(TimeZone.current.identifier)
+        } else {
+          result(FlutterMethodNotImplemented)
+        }
+      }
+    }
   }
 }

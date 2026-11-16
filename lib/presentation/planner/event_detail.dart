@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -13,19 +14,23 @@ class EventDetail extends StatefulWidget {
   const EventDetail({
     required this.repository,
     required this.id,
+    this.initial,
     this.categories,
     super.key,
   });
   final PlannerPreviewRepository repository;
   final String id;
+  final PreviewEvent? initial;
   final Map<String, String>? categories;
   @override
   State<EventDetail> createState() => _EventDetailState();
 }
 
 class _EventDetailState extends State<EventDetail> {
-  PreviewEvent get _event =>
+  late PreviewEvent _event =
+      widget.initial ??
       widget.repository.events.firstWhere((event) => event.id == widget.id);
+  bool _busy = false;
 
   Future<void> _edit({bool replacement = false}) async {
     final event = _event;
@@ -35,7 +40,7 @@ class _EventDetailState extends State<EventDetail> {
     if (!mounted || (!replacement && event.series != null && scope == null)) {
       return;
     }
-    await Navigator.of(context).push<PreviewEvent>(
+    final saved = await Navigator.of(context).push<PreviewEvent>(
       MaterialPageRoute(
         builder: (_) => EventEditor(
           repository: widget.repository,
@@ -43,12 +48,115 @@ class _EventDetailState extends State<EventDetail> {
           scope: scope,
           categories: widget.categories,
           draft: replacement
-              ? EventDraft(title: event.title)
+              ? _replacementDraft(event)
               : EventDraft.fromEvent(event),
         ),
       ),
     );
-    if (mounted) setState(() {});
+    if (!mounted || saved == null) return;
+    if (replacement) {
+      _feedback('Jadwal pengganti tersimpan.');
+    } else {
+      setState(() => _event = saved);
+    }
+  }
+
+  EventDraft _replacementDraft(PreviewEvent event) =>
+      EventDraft.fromEvent(event)
+        ..id = ''
+        ..series = null
+        ..recurrenceKey = null
+        ..supersedesId = event.id
+        ..state = PreviewEventState.upcoming
+        ..recurrence = 'Sekali'
+        ..rule = null
+        ..date = null
+        ..endDate = null
+        ..start = null
+        ..end = null;
+
+  Future<void> _replace() async {
+    final event = _event;
+    final choice = await previewChoices(context, 'Jadwal pengganti', [
+      'Pilih tanggal manual',
+      if (widget.repository.usesStoredCalendar && !event.allDay)
+        'Cari slot pengganti',
+      'Jadwalkan nanti',
+    ], (item) => item);
+    if (!mounted || choice == null || choice == 'Jadwalkan nanti') return;
+    if (choice == 'Pilih tanggal manual') {
+      await _edit(replacement: true);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final start = await widget.repository.suggestReplacement(event);
+      if (!mounted) return;
+      if (start == null) {
+        _feedback(
+          'Belum ada slot pengganti dalam tujuh hari. Pilih tanggal manual.',
+        );
+        return;
+      }
+      final end = start.add(event.end.difference(event.start));
+      final accepted = await showNeoDialog(
+        context,
+        title: 'Tinjau slot pengganti',
+        message:
+            '${dateLabel(start)} · ${clockLabel(minutesAt(start))}–${clockLabel(minutesAt(end))}',
+        confirmLabel: 'Buka formulir pengganti',
+      );
+      if (!mounted || accepted != true) return;
+      final draft = _replacementDraft(event)
+        ..timeMode = TimeMode.originalZone
+        ..zoneId = widget.repository.calendarZoneLabel
+        ..date = dateOnly(start)
+        ..endDate = dateOnly(end)
+        ..start = minutesAt(start)
+        ..end = minutesAt(end);
+      final saved = await Navigator.of(context).push<PreviewEvent>(
+        MaterialPageRoute(
+          builder: (_) => EventEditor(
+            repository: widget.repository,
+            draft: draft,
+            full: true,
+            categories: widget.categories,
+          ),
+        ),
+      );
+      if (mounted && saved != null) _feedback('Jadwal pengganti tersimpan.');
+    } catch (_) {
+      if (mounted) _feedback('Slot pengganti belum dapat dibaca.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _feedback(String message) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text(message)));
+
+  Future<void> _change(PreviewEventState state, {SeriesScope? scope}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final updated = await widget.repository.changeActivity(
+        _event,
+        state,
+        scope: scope,
+      );
+      if (mounted) setState(() => _event = updated);
+    } catch (error) {
+      if (mounted) {
+        _feedback(
+          error is StateError
+              ? error.message
+              : 'Perubahan belum dapat disimpan. Coba lagi.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<SeriesScope?> _scope(String title) => previewChoices(
@@ -67,30 +175,24 @@ class _EventDetailState extends State<EventDetail> {
     final yes = await showNeoDialog(
       context,
       title: 'Pindahkan ke Tempat Sampah?',
-      message: '${event.title}${scope == null ? '' : ' · ${scope.label}'}',
+      message:
+          '${event.title}${scope == null ? '' : ' · ${scope.label}'}${widget.repository.usesStoredCalendar && scope != null && scope != SeriesScope.occurrence ? '\nPerubahan cakupan berlaku pada kejadian mendatang. Riwayat tetap tersedia.' : ''}',
       confirmLabel: 'Hapus kegiatan',
       danger: true,
     );
     if (mounted && yes == true) {
-      setState(
-        () => widget.repository.setEventState(
-          event.id,
-          PreviewEventState.trashed,
-          scope: scope,
-        ),
-      );
+      await _change(PreviewEventState.trashed, scope: scope);
     }
   }
 
   Future<void> _outcome() async {
-    final event = _event;
     final choice = await previewChoices(context, 'Bagaimana hasilnya?', [
       PreviewEventState.done,
       PreviewEventState.postponed,
       PreviewEventState.skipped,
     ], (value) => badgeFor(value)!.label);
     if (!mounted || choice == null) return;
-    setState(() => widget.repository.setEventState(event.id, choice));
+    await _change(choice);
   }
 
   @override
@@ -115,10 +217,16 @@ class _EventDetailState extends State<EventDetail> {
           else if (outcome)
             NeoButton(
               label: 'Jadwalkan pengganti',
-              onPressed: () => _edit(replacement: true),
+              onPressed: _busy ? null : _replace,
             )
           else if (state == PreviewEventState.pending)
-            NeoButton(label: 'Konfirmasi hasil', onPressed: _outcome)
+            NeoButton(
+              label: 'Konfirmasi hasil',
+              onPressed: _busy ? null : _outcome,
+            )
+          else if (state == PreviewEventState.done &&
+              widget.repository.usesStoredCalendar)
+            NeoButton(label: 'Kembali', onPressed: () => Navigator.pop(context))
           else
             NeoButton(label: 'Edit kegiatan', onPressed: _edit),
           const SizedBox(height: NeoSpace.sm),
@@ -129,7 +237,9 @@ class _EventDetailState extends State<EventDetail> {
                 : state == PreviewEventState.pending
                 ? 'Edit kegiatan'
                 : 'Hapus kegiatan',
-            onPressed: trash || outcome
+            onPressed: _busy
+                ? null
+                : trash || outcome
                 ? () => Navigator.pop(context)
                 : state == PreviewEventState.pending
                 ? _edit
@@ -164,6 +274,8 @@ class _EventDetailState extends State<EventDetail> {
                   ),
           ),
           const SizedBox(height: NeoSpace.sm),
+          if (event.isException)
+            const Text('Pengecualian seri', style: NeoType.badge),
           Text(event.title, style: NeoType.display),
           const SizedBox(height: NeoSpace.md),
           NeoCard(
@@ -203,7 +315,7 @@ class _EventDetailState extends State<EventDetail> {
           _fact('Kategori', event.options.category),
           _fact(
             'Pengulangan',
-            state == PreviewEventState.exception
+            state == PreviewEventState.exception || event.isException
                 ? 'Hanya kejadian ini'
                 : event.options.recurrence,
           ),
@@ -255,22 +367,32 @@ class _EventDetailState extends State<EventDetail> {
     ],
   );
 
-  Future<void> _showTrash(BuildContext context) => showNeoBottomSheet<void>(
-    context,
-    builder: (_) => NeoBottomSheet(
-      title: 'Tempat Sampah · pratinjau',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final event in widget.repository.events.where(
-            (event) => event.state == PreviewEventState.trashed,
-          ))
-            Padding(
-              padding: const EdgeInsets.only(bottom: NeoSpace.sm),
-              child: Text(event.title),
-            ),
-        ],
+  Future<void> _showTrash(BuildContext context) async {
+    List<PreviewEvent> entries;
+    try {
+      entries = await widget.repository.readTrashedActivities();
+    } catch (_) {
+      if (context.mounted) _feedback('Tempat Sampah belum dapat dibaca.');
+      return;
+    }
+    if (!context.mounted) return;
+    await showNeoBottomSheet<void>(
+      context,
+      builder: (_) => NeoBottomSheet(
+        title: widget.repository.usesStoredCalendar
+            ? 'Tempat Sampah'
+            : 'Tempat Sampah · pratinjau',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final event in entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: NeoSpace.sm),
+                child: Text(event.title),
+              ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }

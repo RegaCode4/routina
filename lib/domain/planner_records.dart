@@ -224,6 +224,8 @@ class EventSeries extends PlannerRecord {
     required this.timeMode,
     this.categoryId,
     this.splitFromId,
+    this.template,
+    this.endsBefore,
   });
 
   final String title;
@@ -232,6 +234,8 @@ class EventSeries extends PlannerRecord {
   final TimeMode timeMode;
   final String? categoryId;
   final String? splitFromId;
+  final String? template;
+  final LocalDate? endsBefore;
 }
 
 class EventOccurrence extends PlannerRecord {
@@ -251,6 +255,7 @@ class EventOccurrence extends PlannerRecord {
     this.description,
     this.bufferBefore,
     this.bufferAfter,
+    this.details = const EventDetails(),
   });
 
   final String title;
@@ -267,6 +272,26 @@ class EventOccurrence extends PlannerRecord {
   final String? description;
   final Duration? bufferBefore;
   final Duration? bufferAfter;
+  final EventDetails details;
+}
+
+class EventDetails {
+  const EventDetails({
+    this.location = '',
+    this.note = '',
+    this.link = '',
+    this.color = 'Biru',
+    this.reminders = const [],
+    this.isException = false,
+    this.warnings = const [],
+  });
+  final String location;
+  final String note;
+  final String link;
+  final String color;
+  final List<String> reminders;
+  final bool isException;
+  final List<String> warnings;
 }
 
 class Task extends PlannerRecord {

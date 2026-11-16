@@ -1,6 +1,7 @@
 import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/read_today.dart';
 import 'package:routina/data/device_clock.dart';
@@ -41,6 +42,17 @@ void main() {
           ? StoredPlannerProfile(
               today: today,
               openStore: SqlitePlannerStore.open,
+              readDeviceZone: () async {
+                try {
+                  const channel = MethodChannel('routina/device_time_zone');
+                  return await channel.invokeMethod<String>('identifier') ??
+                      'UTC';
+                } on MissingPluginException {
+                  return 'UTC';
+                } on PlatformException {
+                  return 'UTC';
+                }
+              },
             )
           : MemoryPlannerPreview(
               today: today,

@@ -1,4 +1,5 @@
 import 'package:routina/domain/planner_records.dart';
+import 'package:routina/domain/event_recurrence.dart';
 
 enum PreviewKind { activity, deadline, routine, session }
 
@@ -102,6 +103,11 @@ class EventOptions {
     this.zone = 'Pertahankan zona asal (WIB)',
     this.before = 0,
     this.after = 0,
+    this.rule,
+    this.timeMode,
+    this.zoneId,
+    this.editorStart,
+    this.editorEnd,
   });
 
   final DayAvailability availability;
@@ -116,6 +122,11 @@ class EventOptions {
   final String zone;
   final int before;
   final int after;
+  final EventRecurrence? rule;
+  final TimeMode? timeMode;
+  final String? zoneId;
+  final DateTime? editorStart;
+  final DateTime? editorEnd;
 
   EventOptions withCategory(String next, {String? color}) => EventOptions(
     availability: availability,
@@ -130,6 +141,11 @@ class EventOptions {
     zone: zone,
     before: before,
     after: after,
+    rule: rule,
+    timeMode: timeMode,
+    zoneId: zoneId,
+    editorStart: editorStart,
+    editorEnd: editorEnd,
   );
 }
 
@@ -144,6 +160,10 @@ class PreviewEvent {
     this.options = const EventOptions(),
     this.series,
     this.warning,
+    this.recurrenceKey,
+    this.supersedesId,
+    this.isException = false,
+    this.obligationId,
   });
 
   final String id;
@@ -155,10 +175,17 @@ class PreviewEvent {
   final EventOptions options;
   final String? series;
   final ScheduleWarning? warning;
+  final String? recurrenceKey;
+  final String? supersedesId;
+  final bool isException;
+  final String? obligationId;
 
   bool get allDay => options.availability != DayAvailability.timed;
 
-  PreviewEvent withState(PreviewEventState state) => PreviewEvent(
+  PreviewEvent withState(
+    PreviewEventState state, {
+    ScheduleWarning? scheduleWarning,
+  }) => PreviewEvent(
     id: id,
     title: title,
     start: start,
@@ -167,7 +194,11 @@ class PreviewEvent {
     state: state,
     options: options,
     series: series,
-    warning: warning,
+    warning: scheduleWarning ?? warning,
+    recurrenceKey: recurrenceKey,
+    supersedesId: supersedesId,
+    isException: isException,
+    obligationId: obligationId,
   );
 }
 
@@ -180,5 +211,7 @@ DateTime shiftDay(DateTime value, int days) =>
 int minutesAt(DateTime value) => value.hour * 60 + value.minute;
 
 bool appearsOn(PreviewEvent entry, DateTime date) =>
-    entry.start.isBefore(shiftDay(date, 1)) &&
-    entry.end.isAfter(dateOnly(date));
+    civilTime(
+      entry.start,
+    ).isBefore(civilDate(date).add(const Duration(days: 1))) &&
+    civilTime(entry.end).isAfter(civilDate(date));

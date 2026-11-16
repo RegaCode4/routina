@@ -1,28 +1,112 @@
+import 'package:routina/application/activity_calendar.dart';
+import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 
-/// Durable settings alongside the existing calendar and activity previews.
+/// Durable settings and activities alongside opt-in task and routine previews.
 class StoredPlannerProfile extends MemoryPlannerPreview {
   StoredPlannerProfile({
     required super.today,
     required Future<PlannerStore> Function() openStore,
+    Future<String> Function()? readDeviceZone,
+    DateTime Function()? now,
   }) : _openStore = openStore,
-       super(seedCategories: false);
+       _readDeviceZone = readDeviceZone,
+       _now = now ?? DateTime.now,
+       super(seedCategories: false, fixture: PreviewFixture.empty);
 
   final Future<PlannerStore> Function() _openStore;
+  final Future<String> Function()? _readDeviceZone;
+  final DateTime Function() _now;
   PlannerStore? _store;
   List<Category> _savedCategories = const [];
+  List<PreviewEvent> _homeEvents = const [];
+  String _deviceZone = 'UTC';
+  int _confirmationDays = 30;
 
   Future<PlannerStore> _database() async => _store ??= await _openStore();
+
+  CalendarZones get _zones => CalendarZones(
+    deviceZoneId: _deviceZone,
+    displayZoneId: profile?.preferences.calendarZoneId,
+  );
+  Future<ActivityCalendar> _calendar() async => ActivityCalendar(
+    await _database(),
+    _zones,
+    profile: profile,
+    categories: categories,
+    now: _now,
+  );
+
+  @override
+  bool get usesStoredCalendar => true;
+  @override
+  String get calendarZoneLabel => _zones.displayId;
+  @override
+  DateTime get today => dateOnly(_zones.wall(_now(), _zones.displayId));
+  @override
+  DateTime get calendarDay => today;
+  @override
+  List<PreviewEvent> get homeEntries => List.unmodifiable(_homeEvents);
+  @override
+  List<PreviewEvent> get events => [..._homeEvents, ...super.events];
+
+  @override
+  Future<List<PreviewEvent>> readCalendar(
+    DateTime from,
+    DateTime until,
+  ) async => (await _calendar()).read(from, until);
+
+  @override
+  Future<List<ScheduleWarning>> activityWarnings(
+    PreviewEvent event, {
+    SeriesScope? scope,
+  }) async => (await _calendar()).warnings(event, scope: scope);
+
+  @override
+  Future<PreviewEvent> saveActivity(
+    PreviewEvent event, {
+    SeriesScope? scope,
+    Set<ScheduleWarning> approved = const {},
+  }) async => (await _calendar()).save(event, scope: scope, approved: approved);
+
+  @override
+  Future<PreviewEvent> changeActivity(
+    PreviewEvent event,
+    PreviewEventState state, {
+    SeriesScope? scope,
+  }) async => (await _calendar()).change(event, state, scope: scope);
+
+  @override
+  Future<DateTime?> suggestReplacement(PreviewEvent event) async =>
+      (await _calendar()).suggestReplacement(event);
+  @override
+  Future<List<PreviewEvent>> readTrashedActivities() async =>
+      (await _calendar()).trash();
+
+  @override
+  Future<void> loadEarlierConfirmations() async {
+    _confirmationDays += 30;
+    try {
+      await load(PreviewSurface.home);
+    } catch (_) {
+      _confirmationDays -= 30;
+      rethrow;
+    }
+  }
 
   @override
   List<Category> get categories => List.unmodifiable(_savedCategories);
 
   @override
   Future<void> load(PreviewSurface surface) async {
+    if (surface == PreviewSurface.startup || surface == PreviewSurface.home) {
+      final readZone = _readDeviceZone;
+      if (readZone != null) _deviceZone = await readZone();
+    }
     if (surface == PreviewSurface.startup) {
       final store = await _database();
       final record = (await store.profiles.all()).singleOrNull;
@@ -55,6 +139,15 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
           ),
         );
       }
+    }
+    if (surface == PreviewSurface.home) {
+      final calendar = await _calendar();
+      final day = today;
+      _homeEvents = await calendar.read(
+        shiftDay(day, -_confirmationDays),
+        shiftDay(day, 32),
+      );
+      return;
     }
     await super.load(surface);
   }

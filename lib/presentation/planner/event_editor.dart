@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:routina/application/activity_calendar.dart' show repeatLabel;
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -14,31 +18,51 @@ class EventDraft {
     this.date,
     this.title = '',
     this.zone = 'Pertahankan zona asal (WIB)',
+    this.timeMode,
+    this.zoneId,
+    this.supersedesId,
+    this.before = 0,
+    this.after = 0,
   });
   EventDraft.fromEvent(PreviewEvent event)
     : id = event.id,
       state = event.state,
       series = event.series,
+      recurrenceKey = event.recurrenceKey,
+      supersedesId = event.supersedesId,
       title = event.title,
-      date = dateOnly(event.start),
-      endDate = dateOnly(event.allDay ? shiftDay(event.end, -1) : event.end),
-      start = event.allDay ? null : minutesAt(event.start),
-      end = event.allDay ? null : minutesAt(event.end),
+      date = dateOnly(event.options.editorStart ?? event.start),
+      endDate = dateOnly(
+        event.allDay
+            ? shiftDay(event.options.editorEnd ?? event.end, -1)
+            : event.options.editorEnd ?? event.end,
+      ),
+      start = event.allDay
+          ? null
+          : minutesAt(event.options.editorStart ?? event.start),
+      end = event.allDay
+          ? null
+          : minutesAt(event.options.editorEnd ?? event.end),
       availability = event.options.availability,
       category = event.options.category,
       categoryColor = event.options.categoryColor,
       recurrence = event.options.recurrence,
+      rule = event.options.rule,
       reminders = List.of(event.options.reminders),
       description = event.options.description,
       location = event.options.location,
       note = event.options.note,
       link = event.options.link,
       zone = event.options.zone,
+      zoneId = event.options.zoneId,
+      timeMode = event.options.timeMode,
       before = event.options.before,
       after = event.options.after;
 
   String id = '';
   String? series;
+  String? recurrenceKey;
+  String? supersedesId;
   PreviewEventState state = PreviewEventState.upcoming;
   String title;
   DateTime? date;
@@ -49,14 +73,17 @@ class EventDraft {
   String category = '';
   String categoryColor = 'Biru';
   String recurrence = 'Sekali';
+  EventRecurrence? rule;
   List<String> reminders = [];
   String description = '';
   String location = '';
   String note = '';
   String link = '';
   String zone;
-  int before = 0;
-  int after = 0;
+  String? zoneId;
+  TimeMode? timeMode;
+  int before;
+  int after;
 
   bool get allDay => availability != DayAvailability.timed;
   bool get started =>
@@ -90,18 +117,23 @@ class EventDraft {
       end: allDay ? shiftDay(last, 1) : at(last, ends!),
       state: state,
       series: series,
+      recurrenceKey: recurrenceKey,
+      supersedesId: supersedesId,
       warning: warning,
       options: EventOptions(
         availability: availability,
         category: category,
         categoryColor: categoryColor,
         recurrence: recurrence,
+        rule: rule,
         reminders: List.unmodifiable(reminders),
         description: description.trim(),
         location: location.trim(),
         note: note.trim(),
         link: link.trim(),
         zone: zone,
+        zoneId: zoneId,
+        timeMode: timeMode,
         before: before,
         after: after,
       ),
@@ -134,14 +166,58 @@ class _EventEditorState extends State<EventEditor> {
   bool _submitted = false;
   bool _confirming = false;
   bool _saved = false;
+  String? _saveError;
+  Timer? _warningTimer;
+  int _warningRevision = 0;
+  List<ScheduleWarning> _activityWarnings = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshWarnings();
+  }
 
   @override
   void dispose() {
+    _warningTimer?.cancel();
     _title.dispose();
     super.dispose();
   }
 
-  void _change(VoidCallback change) => setState(change);
+  void _change(VoidCallback change) {
+    setState(change);
+    _refreshWarnings();
+  }
+
+  void _refreshWarnings() {
+    if (!widget.repository.usesStoredCalendar) return;
+    _warningTimer?.cancel();
+    final revision = ++_warningRevision;
+    final proposed = _draft.candidate();
+    if (proposed == null ||
+        proposed.title.isEmpty ||
+        !proposed.end.isAfter(proposed.start)) {
+      _activityWarnings = const [];
+      return;
+    }
+    if (_confirming || _saved) return;
+    _warningTimer = Timer(const Duration(milliseconds: 250), () async {
+      List<ScheduleWarning> warnings;
+      try {
+        warnings = await widget.repository.activityWarnings(
+          proposed,
+          scope: widget.scope,
+        );
+      } on Exception {
+        warnings = const [];
+      } on StateError {
+        warnings = const [];
+      }
+      if (mounted && revision == _warningRevision) {
+        setState(() => _activityWarnings = warnings);
+      }
+    });
+  }
 
   Future<void> _date(bool end) async {
     final value = await pickPreviewDate(
@@ -215,7 +291,9 @@ class _EventEditorState extends State<EventEditor> {
       builder: (context) => StatefulBuilder(
         builder: (context, update) => NeoBottomSheet(
           title: 'Pengingat lokal',
-          description: 'Pilihan berlaku pada pratinjau selama sesi.',
+          description: widget.repository.usesStoredCalendar
+              ? 'Waktu pengingat disimpan untuk kegiatan ini.'
+              : 'Pilihan berlaku pada pratinjau selama sesi.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -251,20 +329,71 @@ class _EventEditorState extends State<EventEditor> {
     final option = await previewChoices(context, 'Pola pengulangan', [
       'Sekali',
       'Harian',
-      'Mingguan · Selasa',
+      'Mingguan',
       'Bulanan',
       'Kustom bulanan',
+      'Interval khusus',
     ], (value) => value);
     if (!mounted || option == null) return;
-    if (option != 'Kustom bulanan') {
-      _change(() => _draft.recurrence = option);
+    if (option != 'Kustom bulanan' && option != 'Interval khusus') {
+      _change(() {
+        _draft.recurrence = option;
+        _draft.rule = switch (option) {
+          'Harian' => EventRecurrence(
+            RepeatFrequency.daily,
+            until: _draft.rule?.until,
+          ),
+          'Mingguan · Selasa' || 'Mingguan' => EventRecurrence(
+            RepeatFrequency.weekly,
+            until: _draft.rule?.until,
+          ),
+          'Bulanan' => EventRecurrence(
+            RepeatFrequency.monthly,
+            until: _draft.rule?.until,
+          ),
+          _ => null,
+        };
+      });
       return;
     }
-    final choice = await showNeoBottomSheet<String>(
+    final choice = await showNeoBottomSheet<EventRecurrence>(
       context,
-      builder: (_) => _CustomCycle(today: widget.repository.today),
+      builder: (_) => _CustomCycle(
+        today: widget.repository.today,
+        customUnits: option == 'Interval khusus',
+        until: _draft.rule?.until,
+      ),
     );
-    if (mounted && choice != null) _change(() => _draft.recurrence = choice);
+    if (mounted && choice != null) {
+      _change(() {
+        _draft.rule = choice;
+        _draft.recurrence = repeatLabel(choice);
+      });
+    }
+  }
+
+  Future<void> _chooseUntil() async {
+    final rule = _draft.rule!;
+    final choice = await previewChoices(context, 'Akhir pengulangan', [
+      'Pilih tanggal akhir',
+      'Tanpa tanggal akhir',
+    ], (value) => value);
+    if (!mounted || choice == null) return;
+    final until = choice == 'Tanpa tanggal akhir'
+        ? null
+        : await pickPreviewDate(
+            context,
+            widget.repository.today,
+            selected: rule.until ?? _draft.date,
+          );
+    if (!mounted || (choice != 'Tanpa tanggal akhir' && until == null)) return;
+    _change(
+      () => _draft.rule = EventRecurrence(
+        rule.frequency,
+        interval: rule.interval,
+        until: until,
+      ),
+    );
   }
 
   Future<void> _openFull() async {
@@ -274,6 +403,7 @@ class _EventEditorState extends State<EventEditor> {
           repository: widget.repository,
           draft: _draft,
           full: true,
+          scope: widget.scope,
           categories: widget.categories,
         ),
       ),
@@ -289,7 +419,10 @@ class _EventEditorState extends State<EventEditor> {
 
   Future<void> _save() async {
     if (_confirming || _saved) return;
-    _change(() => _submitted = true);
+    _change(() {
+      _submitted = true;
+      _saveError = null;
+    });
     final proposed = _draft.candidate();
     if (proposed == null ||
         proposed.title.isEmpty ||
@@ -297,32 +430,56 @@ class _EventEditorState extends State<EventEditor> {
         _draft.invalidLink) {
       return;
     }
-    final warnings = previewWarnings(widget.repository, proposed);
-    if (warnings.isNotEmpty) {
-      _change(() => _confirming = true);
-      final yes = await showNeoDialog(
-        context,
-        title: 'Simpan meski ada peringatan?',
-        message: warnings.map(warningBody).join('\n'),
-        confirmLabel: 'Simpan dengan peringatan',
-      );
+    _change(() => _confirming = true);
+    try {
+      var approved = <ScheduleWarning>{};
+      PreviewEvent result;
+      while (true) {
+        try {
+          result = await widget.repository.saveActivity(
+            proposed,
+            scope: widget.scope,
+            approved: approved,
+          );
+          break;
+        } on ActivityWarnings catch (conflict) {
+          if (!mounted) return;
+          final yes = await showNeoDialog(
+            context,
+            title: 'Simpan meski ada peringatan?',
+            message: conflict.warnings.map(warningBody).join('\n'),
+            confirmLabel: 'Simpan dengan peringatan',
+          );
+          if (!mounted || yes != true) return;
+          approved = conflict.warnings.toSet();
+        }
+      }
       if (!mounted) return;
-      _change(() => _confirming = false);
-      if (yes != true) return;
+      _change(() => _saved = true);
+      if (_draft.id.isEmpty) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => _SavedEvent(
+              title: result.title,
+              stored: widget.repository.usesStoredCalendar,
+            ),
+          ),
+        );
+      }
+      if (mounted) Navigator.pop(context, result);
+    } catch (error) {
+      if (mounted) {
+        _change(
+          () => _saveError = error is FormatException || error is StateError
+              ? (error is FormatException
+                    ? error.message
+                    : (error as StateError).message)
+              : 'Kegiatan belum dapat disimpan. Coba lagi.',
+        );
+      }
+    } finally {
+      if (mounted) _change(() => _confirming = false);
     }
-    final result = widget.repository.saveEvent(
-      _draft.candidate(warning: warnings.firstOrNull)!,
-      scope: widget.scope,
-    );
-    _change(() => _saved = true);
-    if (_draft.id.isNotEmpty) {
-      Navigator.pop(context, result);
-      return;
-    }
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => _SavedEvent(title: result.title)),
-    );
-    if (mounted) Navigator.pop(context, result);
   }
 
   @override
@@ -330,7 +487,9 @@ class _EventEditorState extends State<EventEditor> {
     final full = widget.full;
     final proposed = _draft.candidate();
     final timeError = proposed != null && !proposed.end.isAfter(proposed.start);
-    final warnings = proposed != null && !timeError
+    final warnings = widget.repository.usesStoredCalendar
+        ? _activityWarnings
+        : proposed != null && !timeError
         ? previewWarnings(widget.repository, proposed)
         : <ScheduleWarning>[];
     final buttons = Column(
@@ -412,6 +571,14 @@ class _EventEditorState extends State<EventEditor> {
               icon: Icons.warning_amber_rounded,
             ),
           ],
+          if (_saveError case final error?) ...[
+            const SizedBox(height: NeoSpace.sm),
+            PreviewNotice(
+              title: 'Kegiatan belum tersimpan',
+              message: error,
+              warning: true,
+            ),
+          ],
           for (final warning in warnings) ...[
             const SizedBox(height: NeoSpace.md),
             PreviewNotice(
@@ -467,12 +634,23 @@ class _EventEditorState extends State<EventEditor> {
             const SizedBox(height: NeoSpace.md),
             PreviewField(
               label: 'Zona waktu',
-              value: _draft.zone,
-              onTap: () => _choose(
-                'Zona waktu',
-                TimeMode.values.map(timeModeLabel).toList(),
-                (value) => _draft.zone = value,
-              ),
+              value: _draft.timeMode == null
+                  ? _draft.zone
+                  : timeModeLabel(_draft.timeMode!),
+              onTap: () async {
+                final mode = await previewChoices(
+                  context,
+                  'Zona waktu',
+                  TimeMode.values,
+                  timeModeLabel,
+                );
+                if (mounted && mode != null) {
+                  _change(() {
+                    _draft.timeMode = mode;
+                    _draft.zone = timeModeLabel(mode);
+                  });
+                }
+              },
             ),
             const SizedBox(height: NeoSpace.md),
             Row(
@@ -528,11 +706,31 @@ class _EventEditorState extends State<EventEditor> {
               ], (value) => _draft.categoryColor = value),
             ),
             const _SectionTitle('Pengulangan'),
-            PreviewField(
-              label: 'Pola',
-              value: _draft.recurrence,
-              onTap: _recurrence,
-            ),
+            if (widget.scope == SeriesScope.occurrence &&
+                widget.repository.usesStoredCalendar)
+              const Text('Hanya kejadian ini · pola seri tetap berlaku.')
+            else ...[
+              PreviewField(
+                label: 'Pola',
+                value: _draft.recurrence,
+                onTap: _recurrence,
+              ),
+              if (_draft.rule case final rule?) ...[
+                const SizedBox(height: NeoSpace.sm),
+                PreviewField(
+                  label: 'Akhir pengulangan',
+                  value: rule.until == null
+                      ? 'Tanpa tanggal akhir'
+                      : dateLabel(rule.until!, year: true),
+                  onTap: _chooseUntil,
+                ),
+                if (widget.repository.usesStoredCalendar)
+                  const Text(
+                    'Bentrok seri diperiksa untuk 90 hari pertama.',
+                    style: NeoType.caption,
+                  ),
+              ],
+            ],
             const _SectionTitle('Pengingat'),
             PreviewField(
               label: 'Pengingat lokal',
@@ -628,33 +826,65 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _CustomCycle extends StatefulWidget {
-  const _CustomCycle({required this.today});
+  const _CustomCycle({
+    required this.today,
+    this.customUnits = false,
+    this.until,
+  });
   final DateTime today;
+  final bool customUnits;
+  final DateTime? until;
   @override
   State<_CustomCycle> createState() => _CustomCycleState();
 }
 
 class _CustomCycleState extends State<_CustomCycle> {
   int _interval = 2;
-  DateTime? _until;
+  late DateTime? _until = widget.until;
+  late RepeatFrequency _frequency = widget.customUnits
+      ? RepeatFrequency.weekly
+      : RepeatFrequency.monthly;
+
+  String _unit(RepeatFrequency value) => switch (value) {
+    RepeatFrequency.daily => 'hari',
+    RepeatFrequency.weekly => 'minggu',
+    RepeatFrequency.monthly => 'bulan',
+  };
 
   @override
   Widget build(BuildContext context) => NeoBottomSheet(
-    title: 'Pengulangan bulanan kustom',
+    title: widget.customUnits
+        ? 'Interval khusus'
+        : 'Pengulangan bulanan kustom',
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.customUnits) ...[
+          PreviewField(
+            label: 'Satuan',
+            value: _unit(_frequency),
+            onTap: () async {
+              final value = await previewChoices(
+                context,
+                'Satuan interval',
+                RepeatFrequency.values,
+                _unit,
+              );
+              if (mounted && value != null) setState(() => _frequency = value);
+            },
+          ),
+          const SizedBox(height: NeoSpace.sm),
+        ],
         PreviewField(
           label: 'Interval',
-          value: '$_interval bulan',
+          value: '$_interval ${_unit(_frequency)}',
           onTap: () async {
-            final value = await previewChoices<int>(context, 'Interval bulan', [
-              1,
-              2,
-              3,
-              6,
-              12,
-            ], (value) => '$value bulan');
+            final value = await previewChoices<int>(
+              context,
+              'Jumlah interval',
+              [1, 2, 3, 6, 12],
+              (value) => '$value ${_unit(_frequency)}',
+            );
             if (mounted && value != null) setState(() => _interval = value);
           },
         ),
@@ -679,7 +909,7 @@ class _CustomCycleState extends State<_CustomCycle> {
           label: 'Terapkan pengulangan',
           onPressed: () => Navigator.pop(
             context,
-            'Setiap $_interval bulan${_until == null ? '' : ' · sampai ${dateLabel(_until!, year: true)}'}',
+            EventRecurrence(_frequency, interval: _interval, until: _until),
           ),
         ),
       ],
@@ -688,8 +918,9 @@ class _CustomCycleState extends State<_CustomCycle> {
 }
 
 class _SavedEvent extends StatelessWidget {
-  const _SavedEvent({required this.title});
+  const _SavedEvent({required this.title, required this.stored});
   final String title;
+  final bool stored;
   @override
   Widget build(BuildContext context) => PreviewPage(
     title: 'Kegiatan',
@@ -704,7 +935,11 @@ class _SavedEvent extends StatelessWidget {
         const SizedBox(height: NeoSpace.page),
         const Text('Kegiatan tersimpan', style: NeoType.display),
         const SizedBox(height: NeoSpace.xs),
-        Text('$title ditambahkan ke agenda sesi pratinjau.'),
+        Text(
+          stored
+              ? '$title ditambahkan ke kalender lokal.'
+              : '$title ditambahkan ke agenda sesi pratinjau.',
+        ),
       ],
     ),
   );

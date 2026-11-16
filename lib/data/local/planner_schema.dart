@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 3;
+const plannerSchemaVersion = 4;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -308,6 +308,13 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
       ''');
     await db.execute(
       "ALTER TABLE profiles ADD COLUMN preferences TEXT NOT NULL DEFAULT '{}'",
+    );
+  }
+  if (from < 4 && to >= 4) {
+    await db.execute('ALTER TABLE event_series ADD COLUMN template TEXT');
+    await db.execute('ALTER TABLE event_series ADD COLUMN ends_before TEXT');
+    await db.execute(
+      "ALTER TABLE event_occurrences ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
     );
   }
 }

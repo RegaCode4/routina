@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -37,13 +39,29 @@ class _AppShellState extends State<AppShell> {
   DateTime? _requestedDay;
   CalendarView _requestedView = CalendarView.month;
   int _calendarSelection = 0;
+  int _revision = 0;
+  Timer? _ticker;
+  AppLifecycleListener? _lifecycle;
   late final _demo = DemoSession(widget.repository, widget.previewScenario)
     ..addListener(_refresh);
 
-  void _refresh() => setState(() {});
+  void _refresh() {
+    if (mounted) setState(() => _revision++);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.repository.usesStoredCalendar) {
+      _ticker = Timer.periodic(const Duration(minutes: 1), (_) => _refresh());
+      _lifecycle = AppLifecycleListener(onResume: _refresh);
+    }
+  }
 
   @override
   void dispose() {
+    _ticker?.cancel();
+    _lifecycle?.dispose();
     _demo.dispose();
     super.dispose();
   }
@@ -84,12 +102,13 @@ class _AppShellState extends State<AppShell> {
           builder: (_) => EventDetail(
             repository: widget.repository,
             id: entry.id,
+            initial: widget.repository.usesStoredCalendar ? entry : null,
             categories: _demo.eventCategories,
           ),
         ),
       );
     }
-    if (mounted) setState(() {});
+    _refresh();
   }
 
   Future<void> _confirm(PreviewEvent entry) async {
@@ -104,8 +123,16 @@ class _AppShellState extends State<AppShell> {
       PreviewEventState.skipped,
     ], (value) => badgeFor(value)!.label);
     if (!mounted || result == null) return;
-    setState(() => widget.repository.setEventState(entry.id, result));
-    if (result != PreviewEventState.done) await _open(entry);
+    try {
+      final updated = await widget.repository.changeActivity(entry, result);
+      if (!mounted) return;
+      _refresh();
+      if (result != PreviewEventState.done) await _open(updated);
+    } catch (_) {
+      if (mounted) {
+        demoFeedback(context, 'Hasil kegiatan belum dapat disimpan.');
+      }
+    }
   }
 
   void _stats() =>
@@ -119,12 +146,16 @@ class _AppShellState extends State<AppShell> {
           draft: EventDraft(
             date: day,
             zone: timeModeLabel(_demo.preferences.eventTimeMode),
+            timeMode: _demo.preferences.eventTimeMode,
+            before: _demo.buffer,
+            after: _demo.buffer,
           ),
           categories: _demo.eventCategories,
         ),
       ),
     );
     if (mounted && saved != null) {
+      _refresh();
       _calendar(dateOnly(saved.start), view: CalendarView.day);
     }
   }
@@ -164,6 +195,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             PlannerHome(
               repository: widget.repository,
+              revision: _revision,
               onOpen: _open,
               onConfirm: _confirm,
               onCalendar: () => _calendar(widget.repository.today),
@@ -172,6 +204,7 @@ class _AppShellState extends State<AppShell> {
             ),
             PlannerCalendar(
               repository: widget.repository,
+              revision: _revision,
               requestedDay: _requestedDay,
               requestedView: _requestedView,
               selection: _calendarSelection,

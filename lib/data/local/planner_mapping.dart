@@ -216,6 +216,8 @@ final _eventSeries = _Table<EventSeries>(
     'time_mode': value.timeMode.name,
     'category_id': value.categoryId,
     'split_from_id': value.splitFromId,
+    'template': value.template,
+    'ends_before': value.endsBefore?.value,
   },
   (meta, row) => EventSeries(
     meta,
@@ -225,6 +227,8 @@ final _eventSeries = _Table<EventSeries>(
     timeMode: TimeMode.values.byName(row.text('time_mode')),
     categoryId: row.optionalText('category_id'),
     splitFromId: row.optionalText('split_from_id'),
+    template: row.optionalText('template'),
+    endsBefore: row.day('ends_before'),
   ),
 );
 
@@ -245,6 +249,15 @@ final _event = _Table<EventOccurrence>(
     'routine_occurrence_id': value.routineOccurrenceId,
     'all_day_start': value.allDayStart?.value,
     'all_day_end_exclusive': value.allDayEndExclusive?.value,
+    'details': jsonEncode({
+      'location': value.details.location,
+      'note': value.details.note,
+      'link': value.details.link,
+      'color': value.details.color,
+      'reminders': value.details.reminders,
+      'exception': value.details.isException,
+      'warnings': value.details.warnings,
+    }),
     ..._interval(value.schedule),
   },
   (meta, row) => EventOccurrence(
@@ -263,9 +276,25 @@ final _event = _Table<EventOccurrence>(
     description: row.optionalText('description'),
     bufferBefore: row.duration('buffer_before_us'),
     bufferAfter: row.duration('buffer_after_us'),
+    details: _eventDetails(row.text('details')),
   ),
   parent: (value) => value.seriesId,
 );
+
+EventDetails _eventDetails(String encoded) {
+  final fields = jsonDecode(encoded) as Map<String, dynamic>;
+  return EventDetails(
+    location: fields['location'] as String? ?? '',
+    note: fields['note'] as String? ?? '',
+    link: fields['link'] as String? ?? '',
+    color: fields['color'] as String? ?? 'Biru',
+    reminders:
+        (fields['reminders'] as List<dynamic>?)?.cast<String>() ?? const [],
+    isException: fields['exception'] as bool? ?? false,
+    warnings:
+        (fields['warnings'] as List<dynamic>?)?.cast<String>() ?? const [],
+  );
+}
 
 final _task = _Table<Task>(
   'tasks',

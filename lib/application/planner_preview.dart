@@ -1,3 +1,4 @@
+import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 
@@ -16,16 +17,42 @@ abstract interface class PlannerPreviewRepository {
   PreviewProfile? get profile;
   int get onboardingStep;
   List<PreviewEvent> get events;
+  List<PreviewEvent> get homeEntries;
   List<Category> get categories;
+  bool get usesStoredCalendar;
+  String get calendarZoneLabel;
 
   Future<void> load(PreviewSurface surface);
   Future<void> rememberStep(int step);
   Future<void> saveProfile(PreviewProfile profile);
   Future<Category> saveCategory(Category category);
   Future<void> deleteCategory(Category category, {Category? replacement});
+  Future<List<PreviewEvent>> readCalendar(DateTime from, DateTime until);
+  Future<void> loadEarlierConfirmations();
+  Future<List<ScheduleWarning>> activityWarnings(
+    PreviewEvent event, {
+    SeriesScope? scope,
+  });
+  Future<PreviewEvent> saveActivity(
+    PreviewEvent event, {
+    SeriesScope? scope,
+    Set<ScheduleWarning> approved = const {},
+  });
+  Future<PreviewEvent> changeActivity(
+    PreviewEvent event,
+    PreviewEventState state, {
+    SeriesScope? scope,
+  });
+  Future<DateTime?> suggestReplacement(PreviewEvent event);
+  Future<List<PreviewEvent>> readTrashedActivities();
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope});
   void setEventState(String id, PreviewEventState state, {SeriesScope? scope});
   void reassignCategory(String previous, String next, {String? color});
+}
+
+class ActivityWarnings implements Exception {
+  const ActivityWarnings(this.warnings);
+  final List<ScheduleWarning> warnings;
 }
 
 List<ScheduleWarning> previewWarnings(
@@ -91,9 +118,14 @@ class DailyPreview {
               dateOnly(entry.start) == dateOnly(day),
         )
         .toList();
-    total = obligations.length;
+    total = obligations
+        .map((entry) => entry.obligationId ?? entry.id)
+        .toSet()
+        .length;
     completed = obligations
         .where((entry) => entry.state == PreviewEventState.done)
+        .map((entry) => entry.obligationId ?? entry.id)
+        .toSet()
         .length;
     final upcoming =
         entries
@@ -101,7 +133,7 @@ class DailyPreview {
               (entry) =>
                   entry.kind == PreviewKind.activity &&
                   entry.state == PreviewEventState.upcoming &&
-                  !entry.start.isBefore(dateOnly(day)),
+                  !civilTime(entry.start).isBefore(civilDate(day)),
             )
             .toList()
           ..sort((a, b) => a.start.compareTo(b.start));

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
@@ -27,12 +28,14 @@ class PlannerCalendar extends StatefulWidget {
     required this.selection,
     required this.onOpen,
     required this.onAdd,
+    this.revision = 0,
     super.key,
   });
   final PlannerPreviewRepository repository;
   final DateTime? requestedDay;
   final CalendarView requestedView;
   final int selection;
+  final int revision;
   final ValueChanged<PreviewEvent> onOpen;
   final ValueChanged<DateTime> onAdd;
 
@@ -43,7 +46,7 @@ class PlannerCalendar extends StatefulWidget {
 class _PlannerCalendarState extends State<PlannerCalendar> {
   late DateTime _date = widget.requestedDay ?? widget.repository.calendarDay;
   late CalendarView _view = widget.requestedView;
-  late Future<void> _load = widget.repository.load(PreviewSurface.calendar);
+  late Future<List<PreviewEvent>> _load = _read();
   final _scroll = ScrollController();
   bool _wita = false;
 
@@ -55,7 +58,10 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
 
   void _selectView(CalendarView value) {
     if (_scroll.hasClients) _scroll.jumpTo(0);
-    setState(() => _view = value);
+    setState(() {
+      _view = value;
+      if (widget.repository.usesStoredCalendar) _load = _read();
+    });
   }
 
   @override
@@ -68,14 +74,40 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
         if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
       });
     }
+    if (widget.repository.usesStoredCalendar &&
+        (oldWidget.selection != widget.selection ||
+            oldWidget.revision != widget.revision)) {
+      _load = _read();
+    }
   }
 
   bool get _sunday => widget.repository.profile?.sundayFirst ?? false;
   DateTime _weekStart(DateTime day) =>
       shiftDay(day, -((day.weekday - (_sunday ? 7 : 1) + 7) % 7));
 
-  List<PreviewEvent> get _entries => [
-    for (final entry in widget.repository.events)
+  Future<List<PreviewEvent>> _read() {
+    final (start, days) = switch (_view) {
+      CalendarView.month => (_weekStart(DateTime(_date.year, _date.month)), 42),
+      CalendarView.week => (_weekStart(_date), 7),
+      CalendarView.day => (dateOnly(_date), 1),
+    };
+    return widget.repository.readCalendar(start, shiftDay(start, days));
+  }
+
+  void _selectDay(DateTime day) => setState(() {
+    final newMonth = _date.month != day.month || _date.year != day.year;
+    _date = day;
+    if (widget.repository.usesStoredCalendar &&
+        (_view == CalendarView.day || newMonth)) {
+      _load = _read();
+    }
+  });
+
+  List<PreviewEvent> _entries(List<PreviewEvent> stored) => [
+    for (final entry
+        in widget.repository.usesStoredCalendar
+            ? stored
+            : widget.repository.events)
       if (entry.state != PreviewEventState.trashed)
         if (_wita && !entry.allDay)
           PreviewEvent(
@@ -99,7 +131,12 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
       widget.repository.today,
       selected: _date,
     );
-    if (mounted && value != null) setState(() => _date = value);
+    if (mounted && value != null) {
+      setState(() {
+        _date = value;
+        if (widget.repository.usesStoredCalendar) _load = _read();
+      });
+    }
   }
 
   Future<void> _chooseZone() async {
@@ -116,6 +153,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
       CalendarView.week => shiftDay(_date, direction * 7),
       CalendarView.day => shiftDay(_date, direction),
     };
+    if (widget.repository.usesStoredCalendar) _load = _read();
   });
 
   String _period() {
@@ -176,12 +214,16 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
               Align(
                 alignment: AlignmentDirectional.centerStart,
                 child: InkWell(
-                  onTap: _chooseZone,
+                  onTap: widget.repository.usesStoredCalendar
+                      ? null
+                      : _chooseZone,
                   borderRadius: NeoRadius.small,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: NeoSpace.xs),
                     child: Text(
-                      _wita
+                      widget.repository.usesStoredCalendar
+                          ? '${widget.repository.calendarZoneLabel}${_view == CalendarView.week ? ' · Minggu dimulai ${_sunday ? 'Minggu' : 'Senin'}' : ''}'
+                          : _wita
                           ? 'Zona tampilan · WITA (UTC+8)'
                           : _view == CalendarView.week
                           ? 'WIB · Minggu dimulai ${_sunday ? 'Minggu' : 'Senin'}'
@@ -192,7 +234,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                 ),
               ),
             const SizedBox(height: NeoSpace.sm),
-            FutureBuilder<void>(
+            FutureBuilder<List<PreviewEvent>>(
               future: _load,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
@@ -211,9 +253,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                     button: NeoButton(
                       label: 'Muat ulang kalender',
                       onPressed: () {
-                        final retry = widget.repository.load(
-                          PreviewSurface.calendar,
-                        );
+                        final retry = _read();
                         setState(() {
                           _load = retry;
                         });
@@ -221,7 +261,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                     ),
                   );
                 }
-                final entries = _entries;
+                final entries = _entries(snapshot.data ?? const []);
                 final dayEntries =
                     entries.where((item) => appearsOn(item, _date)).toList()
                       ..sort((a, b) => a.start.compareTo(b.start));
@@ -300,7 +340,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
     final items = entries.where((event) => appearsOn(event, date)).toList();
     final picked = date == _date;
     final today = date == widget.repository.today;
-    void onTap() => setState(() => _date = date);
+    void onTap() => _selectDay(date);
     return Semantics(
       label:
           '${dateLabel(date, year: true)}${items.isEmpty ? '' : ', ${items.length} agenda'}',
@@ -408,7 +448,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                   for (final day in days)
                     Expanded(
                       child: InkWell(
-                        onTap: () => setState(() => _date = day),
+                        onTap: () => _selectDay(day),
                         borderRadius: NeoRadius.small,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
@@ -678,9 +718,13 @@ class _AllDayChip extends StatelessWidget {
 }
 
 int _startMinute(PreviewEvent entry, DateTime day) =>
-    entry.start.isBefore(dateOnly(day)) ? 0 : minutesAt(entry.start);
+    civilTime(entry.start).isBefore(civilDate(day))
+    ? 0
+    : minutesAt(entry.start);
 int _endMinute(PreviewEvent entry, DateTime day) =>
-    entry.end.isBefore(shiftDay(day, 1)) ? minutesAt(entry.end) : 1440;
+    civilTime(entry.end).isBefore(civilDate(day).add(const Duration(days: 1)))
+    ? minutesAt(entry.end)
+    : 1440;
 
 class _TimeGrid extends StatelessWidget {
   const _TimeGrid({
