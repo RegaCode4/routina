@@ -87,6 +87,7 @@ class BackupWorkspace {
       return BackupReview._(mode, local, verified, incoming, const []);
     }
 
+    _checkTrashMerge(local, incoming);
     final rows = {...local.entities};
     final conflicts = <BackupConflict>[];
     final profile = local.entities.values.singleWhere(
@@ -190,6 +191,29 @@ class BackupWorkspace {
       ),
     );
   });
+}
+
+// Independently created Trash entries have their own IDs. A row-by-row union
+// would hide the shared target even when the user kept its local version.
+void _checkTrashMerge(BackupSnapshot local, BackupSnapshot incoming) {
+  Set<(String, String, String?)> activeEntries(BackupSnapshot source) => {
+    for (final row in source.entities.values)
+      if (row.kind == RecordKind.trashEntry &&
+          row.data['restored_at_us'] == null)
+        (
+          row.id,
+          row.data['target_id'] as String,
+          row.data['series_cut'] as String?,
+        ),
+  };
+  final left = activeEntries(local);
+  final right = activeEntries(incoming);
+  for (final entry in [...left.difference(right), ...right.difference(left)]) {
+    if (local.entities.containsKey(entry.$2) &&
+        incoming.entities.containsKey(entry.$2)) {
+      throw BackupIssue.trashConflict;
+    }
+  }
 }
 
 void _checkLoggedSchedules(BackupReview review, BackupSnapshot merged) {

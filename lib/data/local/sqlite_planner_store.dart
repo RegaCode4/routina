@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:routina/data/local/planner_schema.dart';
 import 'package:routina/domain/backup.dart';
 import 'package:routina/domain/event_recurrence.dart';
@@ -26,9 +27,16 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
     DateTime Function()? now,
   }) async {
     final selected = factory ?? databaseFactory;
+    final databasePath =
+        path ??
+        (Platform.isIOS && factory == null
+            ? await const MethodChannel(
+                    'routina/backup_storage',
+                  ).invokeMethod<String>('databasePath') ??
+                  (throw StateError('Private planner storage is unavailable'))
+            : '${await selected.getDatabasesPath()}${Platform.pathSeparator}routina.db');
     final db = await selected.openDatabase(
-      path ??
-          '${await selected.getDatabasesPath()}${Platform.pathSeparator}routina.db',
+      databasePath,
       options: OpenDatabaseOptions(
         version: plannerSchemaVersion,
         // The owner controls the lifetime, including closing before reopening.
@@ -114,14 +122,18 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
     BackupSnapshot expected,
     BackupSnapshot replacement,
   ) async {
-    await _database.transaction((data) async {
-      if (!(await _readBackup(data)).sameAs(expected)) {
+    final changed = await _database.transaction((data) async {
+      final current = await _readBackup(data);
+      if (!current.sameAs(expected)) {
         throw BackupIssue.staleReview;
       }
+      if (current.sameAs(replacement)) return false;
       await _replaceBackup(data, replacement);
+      return true;
     });
     // A notification failure after commit cannot roll back restored data.
     // LocalReminders reports its own errors and reconciles again on resume.
+    if (!changed) return;
     try {
       await _afterCommit?.call();
     } catch (_) {}

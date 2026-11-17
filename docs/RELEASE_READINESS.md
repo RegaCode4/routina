@@ -1,4 +1,4 @@
-# Kesiapan rilis Routina · Fase 15–16
+# Kesiapan rilis Routina · Fase 15–17
 
 **Belum siap untuk distribusi publik.** Audit menggunakan [PRD](../PRD.md), [DESIGN](../DESIGN.md), [referensi FigCraft](FIGCRAFT_SCREEN_MAP.md), dan [rencana fase](IMPLEMENTATION_PLAN.md). Status “Ada” menunjukkan jalur produksi yang terhubung ke data lokal. Batas verifikasi perangkat dicatat terpisah.
 
@@ -18,7 +18,7 @@
 | FR-10 Statistik | Ada. `ProductivityStatistics` membaca data lokal dari Home dan Profil. Uji menghitung dua rasio, periode kosong, pembanding setara/otomatis/manual dan riwayat. |
 | FR-11 Zona dan awal minggu | Ada. `CalendarZones` menerapkan waktu lokal/instant ke kalender, recurrence, tenggat, rutin, statistik dan scheduler. Pengujian mencakup DST dengan jam berulang/hilang dan hitung ulang minggu tanpa mutasi histori. Refresh OS, termasuk pengingat ketika zona perangkat berubah, perlu validasi perangkat lintas OS. |
 | FR-12 Tempat Sampah | Ada. Soft-delete, retensi, restore dengan cek relasi/kategori/bentrok dan penghapusan permanen eksplisit teruji di `trash_workspace_test` dan `trash_screens_test`. Jadwal purge otomatis dan kebijakan statistik setelah purge masih OPEN. |
-| FR-13 Backup dan restore | Ada. Ekspor terenkripsi, validasi, Ganti Semua, Gabungkan berdasarkan ID dan keputusan per konflik. Uji cipher, workspace dan UI mencakup sandi salah, korupsi, relasi, stale dan abort SQLite saat penulisan. Fase 14 menguji ekspor/restore melalui pemilih file Android dan membuka Share Sheet. Review keamanan dan kompatibilitas native lintas OS masih terbuka. [Format dan transaksi](BACKUP.md) |
+| FR-13 Backup dan restore | Ada. Fase 17 mempertahankan format v1 dan memperkuat batas input, integritas profil, status Trash dan Merge berulang. Rollback SQLite, restore v1, dan pemilih dokumen diuji pada Android. Verifikasi iOS serta pertukaran native antarplatform masih PENDING. [Format dan transaksi](BACKUP.md) |
 
 
 ## Cakupan layar SC-01–SC-30
@@ -101,11 +101,29 @@ Jalur produksi membaca proyeksi SQLite yang sama dengan kalender dan daftar ruti
 - Tiga tangkapan layar di `build/visual-audit/f16-*.png` diperiksa terhadap kerangka FigCraft SC-05/07 (1535, 1792), SC-14 (6958), dan varian pencarian/filter/kosong SC-11 (6035, 6092, 5929). Field outline, chip aktif kuning, kartu kosong berbayang dan aksi reset memakai token DESIGN. Uji ukuran kecil juga menemukan dan memverifikasi perbaikan tata letak aksi Lihat hari di Kalender bulanan.
 - Uji native iOS masih terbuka karena host Windows. Kebijakan nama kategori duplikat tercatat OPEN pada DESIGN SC-26.
 
+## Audit backup dan integritas · Fase 17
+
+| Keparahan | Temuan dan tindakan |
+| --- | --- |
+| Tinggi | Merge dapat menggabungkan entri Tempat Sampah terpisah untuk target bersama. Backup dapat mengubah visibilitas target meskipun pengguna mempertahankan versi lokal. Review sekarang menolak state Trash yang berbeda untuk ID bersama dan memberi jalur ke tinjauan Ganti Semua. |
+| Tinggi | Snapshot yang lolos autentikasi dapat berisi tombstone yang menyembunyikan profil tunggal. Validasi SQLite sekarang memastikan profil tetap terlihat sebelum data aktif dapat diganti. |
+| Sedang | Pemilih file sebelumnya bisa menyalin seluruh input sebelum batas Dart diperiksa. Pembaca dokumen native membatasi pembacaan dan menghindari salinan aplikasi. Encoder ekspor juga menerapkan batas byte saat serialisasi. |
+| Sedang | Merge berulang dapat menulis ulang snapshot identik dan menghapus progres pengingat. Konfirmasi masih memeriksa snapshot terkini. Penulisan dan rekonsiliasi dilewati jika hasil identik. |
+| Tinggi untuk rilis iOS · PENDING | Database sebelumnya di Documents berpotensi ikut backup OS. Implementasi memakai Application Support yang diberi pengecualian dan relokasi konservatif untuk database lama. Build, migrasi native, dan transfer iCloud/perangkat perlu verifikasi macOS dan perangkat. |
+
+- Audit model mencakup seluruh tabel record, relasi bertipe, status dan revisi, signature jadwal, zona/instant/waktu dinding, template/exception recurrence, subtree tugas dan rutinitas, timer, log, snapshot tujuan, serta Trash dan pengaturan. Skema lokal tetap 9. Migrasi lokal 1→9 mempertahankan guard riwayat v2, profil v3, recurrence v4, goal/timer v5, parameter sesi v6, progres pengingat v7, cadence v8 dan metadata Trash v9. Restore menerima file v1 skema 9. Migrasi skema file lain tetap OPEN-05.
+- `flutter pub outdated --show-all --json` memeriksa 91 paket terkunci. `cryptography` 2.9.0 dan `crypto` 3.0.8 tidak memiliki flag advisory, retracted, atau discontinued pada metadata Pub yang diperiksa. Keputusan keamanan produk OPEN-11 tetap terbuka. [Kontrak format dan risiko](BACKUP.md)
+- APK debug yang diuji memuat ketiga atribut backup Android. XML API 31+ memuat cloud dan device transfer, serta XML legacy mengecualikan domain database dan SharedPreferences. Dengan Backup Manager aktif dan transport lokal, hasil untuk paket Routina adalah `Backup is not allowed` pada emulator API 36. Uji transfer OEM dan API 24–30 secara fisik masih terbuka. [Kebijakan perangkat](BACKUP_PLATFORM_POLICY.md)
+- Native Android offline menguji fixture v1, modifikasi tag, rollback saat penulisan sengaja digagalkan, restore sukses, ekspor ulang dan Merge berulang. Pemilih Android membaca file valid, menolak file 32 MiB + 1 byte, dan menangani pembatalan. Fault penulisan diuji melalui trigger SQLite. Kondisi perangkat benar-benar kehabisan ruang belum disimulasikan.
+- Format Dart dan `flutter analyze --no-pub` lulus. `flutter test --no-pub --concurrency=1 --reporter=expanded` lulus **158 unit/widget test**. Terdapat 20 tes terarah backup dan 2 skenario integrasi Android. Regresi Kalender, Tugas, Rutinitas, Smart Scheduling, dan Statistik lulus. Tiga fixture independen dapat dihasilkan kembali byte-for-byte.
+- **PENDING Android ↔ iOS.** Vektor independen dan pengujian Dart memverifikasi format portable. macOS, Xcode, perangkat iOS, serta transfer silang native tidak tersedia pada host ini.
+
 ## Checklist sebelum distribusi publik
 
 - [x] Pencarian dan filter Kalender serta Rutinitas lulus validasi FR-09 Fase 16.
-- [ ] Tentukan kebijakan backup OS iOS untuk SQLite lokal. Uji upgrade, data transfer dan restore perangkat tanpa kehilangan riwayat.
-- [ ] Selesaikan review keamanan format, algoritma, iterasi dan batas pembacaan backup. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
+- [x] Audit backup dan verifikasi pada Windows serta Android API 36 lulus untuk lingkup Fase 17.
+- [ ] Verifikasi kebijakan backup OS iOS untuk SQLite lokal pada perangkat, termasuk upgrade dan sidecar, data transfer, serta restore perangkat.
+- [ ] Finalisasi keputusan keamanan OPEN-11. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
 - [ ] Uji perubahan izin saat aplikasi kembali dari Settings, delivery saat reboot, DND/Focus, lock screen, pergantian zona dan penghentian proses pada perangkat. Ketepatan pengiriman mengikuti pembatasan OS.
 - [ ] Tetapkan application/bundle ID publik, upload key, Apple Team, ikon/splash final dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
 - [ ] Validasi TalkBack/VoiceOver, keyboard perangkat, layar kecil fisik, landscape dan tablet. Perluas sampling visual ke varian FigCraft berisiko tinggi.

@@ -19,6 +19,7 @@ class BackupCipher {
   static const _nonceOffset = 30;
   static const _headerLength = 42;
   static const _tagLength = 16;
+  static const _maximumPayload = maxBytes - _headerLength - _tagLength;
 
   Future<Uint8List> seal(BackupArchive archive, String password) =>
       Isolate.run(() => _seal(archive, password));
@@ -27,15 +28,21 @@ class BackupCipher {
     Uint8List bytes,
     String password, {
     required int expectedSchema,
-  }) => Isolate.run(() => _open(bytes, password, expectedSchema));
+  }) {
+    if (bytes.length > maxBytes) return Future.error(BackupIssue.tooLarge);
+    return Isolate.run(() => _open(bytes, password, expectedSchema));
+  }
 
   static Future<Uint8List> _seal(BackupArchive archive, String password) async {
     if (password.isEmpty) throw BackupIssue.passwordRequired;
-    final plaintext = utf8.encode(archive.encode());
+    final output = _BackupByteSink(_maximumPayload);
+    JsonUtf8Encoder(
+      null,
+      null,
+      64 * 1024,
+    ).startChunkedConversion(output).add(archive.toJson());
+    final plaintext = output.takeBytes();
     try {
-      if (plaintext.length > maxBytes - _headerLength - _tagLength) {
-        throw BackupIssue.tooLarge;
-      }
       final header = Uint8List(_headerLength)..setAll(0, _magic);
       header[8] = _format;
       header[9] = _suite;
@@ -71,7 +78,6 @@ class BackupCipher {
     int expectedSchema,
   ) async {
     if (password.isEmpty) throw BackupIssue.passwordRequired;
-    if (bytes.length > maxBytes) throw BackupIssue.tooLarge;
     if (bytes.length <= _headerLength + _tagLength ||
         !_magic.indexed.every((byte) => bytes[byte.$1] == byte.$2)) {
       throw BackupIssue.invalidFile;
@@ -129,4 +135,22 @@ class BackupCipher {
       bytes.fillRange(0, bytes.length, 0);
     }
   }
+}
+
+class _BackupByteSink implements Sink<List<int>> {
+  _BackupByteSink(this.limit);
+
+  final int limit;
+  final _bytes = BytesBuilder(copy: false);
+
+  @override
+  void add(List<int> data) {
+    if (data.length > limit - _bytes.length) throw BackupIssue.tooLarge;
+    _bytes.add(data);
+  }
+
+  @override
+  void close() {}
+
+  Uint8List takeBytes() => _bytes.takeBytes();
 }

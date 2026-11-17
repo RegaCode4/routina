@@ -5,6 +5,7 @@ import 'package:routina/domain/planner_records.dart';
 enum BackupIssue implements Exception {
   passwordRequired,
   invalidFile,
+  readFailed,
   unsupportedFormat,
   authentication,
   tooLarge,
@@ -12,6 +13,7 @@ enum BackupIssue implements Exception {
   invalidData,
   incompleteChoices,
   incompatibleMerge,
+  trashConflict,
   staleReview,
   applyFailed,
 }
@@ -121,7 +123,7 @@ class BackupArchive {
   final DateTime createdAt;
   final BackupSnapshot snapshot;
 
-  String encode() => jsonEncode({
+  Map<String, Object?> toJson() => {
     'manifest': {
       'application': 'routina',
       'schemaVersion': snapshot.schemaVersion,
@@ -129,7 +131,7 @@ class BackupArchive {
       'counts': snapshot.counts,
     },
     'entities': snapshot.entities.values.map((row) => row.toJson()).toList(),
-  });
+  };
 
   factory BackupArchive.decode(String json, {required int expectedSchema}) {
     final map = _object(jsonDecode(json));

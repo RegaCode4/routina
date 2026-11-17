@@ -12,10 +12,15 @@ import java.util.TimeZone
 
 class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
+    private val backupImport = BackupImport(this)
     private var firstReminderSync = true
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/backup_storage")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "pick") backupImport.pick(result) else result.notImplemented()
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/device_time_zone")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -71,5 +76,11 @@ class MainActivity : FlutterActivity() {
             permissionResult?.success(null)
             permissionResult = null
         }
+    }
+
+    @Deprecated("Used to receive Storage Access Framework results")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        backupImport.onResult(requestCode, resultCode, data)
     }
 }

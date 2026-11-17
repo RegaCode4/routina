@@ -450,6 +450,8 @@ void _feedback(BuildContext context, String message) => ScaffoldMessenger.of(
 
 String _backupProblem(Object issue, String fallback) => switch (issue) {
   BackupIssue.passwordRequired => 'Masukkan password backup.',
+  BackupIssue.readFailed =>
+    'File backup tidak dapat dibaca dari lokasi yang dipilih.',
   BackupIssue.invalidFile =>
     'File bukan backup Routina yang valid atau file terpotong.',
   BackupIssue.unsupportedFormat => 'Versi format backup ini belum didukung.',
@@ -463,6 +465,8 @@ String _backupProblem(Object issue, String fallback) => switch (issue) {
   BackupIssue.incompleteChoices => 'Pilih versi untuk setiap konflik.',
   BackupIssue.incompatibleMerge =>
     'Pilihan menghasilkan relasi atau identitas yang bertentangan. Tinjau pilihan penggabungan.',
+  BackupIssue.trashConflict =>
+    'Status Tempat Sampah berbeda untuk item yang sama. Untuk memakai seluruh isi backup, tinjau Ganti Semua.',
   BackupIssue.staleReview =>
     'Data lokal berubah. Tinjau kembali sebelum menyimpan.',
   BackupIssue.applyFailed =>

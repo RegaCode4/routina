@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:routina/data/backup_cipher.dart';
 import 'package:routina/domain/backup.dart';
 
+import '../support/backup_vectors.dart';
+
 // Produced independently with Node.js/OpenSSL pbkdf2Sync and createCipheriv.
 // The deterministic salt/nonce apply only to this interoperability fixture.
 const vector =
@@ -29,6 +31,44 @@ void main() {
         cipher.open(base64Decode(vector), password, expectedSchema: 8),
         throwsA(BackupIssue.unsupportedSchema),
       );
+    },
+  );
+
+  test('rejects input and export above the envelope limit', () async {
+    await expectLater(
+      cipher.open(
+        Uint8List(BackupCipher.maxBytes + 1),
+        password,
+        expectedSchema: 9,
+      ),
+      throwsA(BackupIssue.tooLarge),
+    );
+    final huge = BackupEntity(
+      record: const {'id': 'fixture-size', 'kind': 'task'},
+      data: {'id': 'fixture-size', 'description': 'x' * BackupCipher.maxBytes},
+    );
+    await expectLater(
+      cipher.seal(
+        BackupArchive(DateTime.utc(2026), BackupSnapshot(9, [huge])),
+        password,
+      ),
+      throwsA(BackupIssue.tooLarge),
+    );
+  });
+
+  test(
+    'rejects an authenticated count mismatch and duplicate stable IDs',
+    () async {
+      for (final vector in [incorrectManifestV1, duplicateIdV1]) {
+        await expectLater(
+          cipher.open(
+            portableBytes(vector),
+            portablePassword,
+            expectedSchema: 9,
+          ),
+          throwsA(BackupIssue.invalidData),
+        );
+      }
     },
   );
 

@@ -29,6 +29,12 @@ const _selfReference = {
 };
 
 Future<BackupSnapshot> _readBackup(DatabaseExecutor db) async {
+  final count = Sqflite.firstIntValue(
+    await db.rawQuery('SELECT COUNT(*) FROM records'),
+  );
+  if (count != null && count > BackupSnapshot.maxEntities) {
+    throw BackupIssue.tooLarge;
+  }
   final records = {
     for (final row in await db.query('records')) row.text('id'): row,
   };
@@ -126,6 +132,14 @@ Future<void> _replaceBackup(
   }
   await batch.commit(noResult: true);
   if ((await db.rawQuery('PRAGMA foreign_key_check')).isNotEmpty) {
+    throw BackupIssue.invalidData;
+  }
+  if ((await db.query(
+    'hidden_records',
+    where: 'id = ?',
+    whereArgs: [profileRows.single['id']],
+    limit: 1,
+  )).isNotEmpty) {
     throw BackupIssue.invalidData;
   }
 }

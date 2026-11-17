@@ -1,8 +1,5 @@
-import 'dart:typed_data';
-import 'dart:ui';
-
 import 'package:file_picker/file_picker.dart';
-import 'package:routina/data/backup_cipher.dart';
+import 'package:flutter/services.dart';
 import 'package:routina/domain/backup.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -21,21 +18,16 @@ class SystemBackupFiles implements BackupFiles {
 
   @override
   Future<PickedBackup?> pick() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.any,
-      withReadStream: true,
-    );
-    if (result == null) return null;
-    final file = result.files.single;
-    if (file.size > BackupCipher.maxBytes) throw BackupIssue.tooLarge;
-    final bytes = BytesBuilder(copy: false);
-    await for (final chunk in file.readStream ?? file.xFile.openRead()) {
-      if (bytes.length + chunk.length > BackupCipher.maxBytes) {
-        throw BackupIssue.tooLarge;
-      }
-      bytes.add(chunk);
+    try {
+      final file = await const MethodChannel(
+        'routina/backup_storage',
+      ).invokeMapMethod<String, Object?>('pick');
+      if (file == null) return null;
+      return (name: file['name'] as String, bytes: file['bytes'] as Uint8List);
+    } on PlatformException catch (error) {
+      if (error.code == 'tooLarge') throw BackupIssue.tooLarge;
+      throw BackupIssue.readFailed;
     }
-    return (name: file.name, bytes: bytes.takeBytes());
   }
 
   @override

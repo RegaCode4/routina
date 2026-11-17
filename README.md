@@ -57,4 +57,4 @@ Pada macOS, gunakan `flutter build ios --release --no-codesign` untuk validasi k
 
 - [PRD](PRD.md), [DESIGN](DESIGN.md), dan [peta FigCraft](docs/FIGCRAFT_SCREEN_MAP.md)
 - [Arsitektur](docs/ARCHITECTURE.md) dan [rencana fase](docs/IMPLEMENTATION_PLAN.md)
-- [Format backup dan restore](docs/BACKUP.md) dan [batasan notifikasi OS](docs/NOTIFICATIONS.md)
+- [Format backup dan restore](docs/BACKUP.md), [kebijakan backup platform](docs/BACKUP_PLATFORM_POLICY.md), dan [batasan notifikasi OS](docs/NOTIFICATIONS.md)

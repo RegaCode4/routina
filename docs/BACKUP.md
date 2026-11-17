@@ -1,6 +1,6 @@
 # Format backup Routina untuk review
 
-Fase 14 mengimplementasikan FR-13 dengan file `.routina`. Format berikut berstatus **PROPOSED** sampai review keamanan OPEN-11 selesai.
+Fase 14 memperkenalkan file `.routina`. Fase 17 mengaudit kontrak, jalur impor, dan restore. Format v1 dan pembacaan backup skema 9 dipertahankan. Parameter final untuk produksi masih **OPEN-11**.
 
 ## Envelope biner v1
 
@@ -21,7 +21,7 @@ Password salah dan modifikasi ciphertext, salt, nonce, atau tag menghasilkan pes
 
 ## Manifest dan data
 
-Manifest terenkripsi memuat `application = "routina"`, `schemaVersion`, `createdAt` ISO 8601 UTC, dan jumlah per jenis entitas. Format v1 membawa skema SQLite 9. Pembaca memeriksa kesesuaian versi skema dengan aplikasi. Migrasi isi file lintas versi memerlukan aturan eksplisit saat skema baru diperkenalkan.
+Manifest terenkripsi memuat `application = "routina"`, `schemaVersion`, `createdAt` ISO 8601 UTC, dan jumlah per jenis entitas. Format v1 membawa skema SQLite 9. Pembaca mempertahankan kompatibilitas dengan file v1 skema 9 dari Fase 14–16. Schema ID lain ditolak sebelum penulisan. Migrasi isi file lintas versi tetap OPEN-05.
 
 Setiap entitas membawa ID stabil, jenis, revisi, waktu pembuatan/perubahan, relasi induk, dan data sesuai tabel. Snapshot memuat profil, kategori, seri dan pengecualian, kegiatan, tugas, subtugas, sesi, rutinitas, time log, riwayat status, aturan pengingat, serta Tempat Sampah. Timer aktif dicadangkan sebagai jeda dengan durasi hingga waktu snapshot. Perkiraan target dari timer yang berjalan akan dibentuk ulang saat timer dilanjutkan. Cache pengiriman pengingat perangkat dibentuk ulang setelah commit.
 
@@ -30,6 +30,7 @@ Setiap entitas membawa ID stabil, jenis, revisi, waktu pembuatan/perubahan, rela
 - Aplikasi memvalidasi backup terautentikasi di SQLite dalam memori. Validasi memeriksa bentuk kolom dan tipe nilai, ID unik, profil, induk, relasi, aturan kalender, hitungan manifest, batasan tabel, foreign key, serta konsistensi hasil dengan riwayat. Tinjauan dan pemilihan versi tidak menulis data aktif.
 - **Ganti Semua** menampilkan ringkasan, menawarkan ekspor cadangan data saat ini, dan meminta konfirmasi. **Gabungkan** memakai ID stabil. Judul kembar dengan ID berbeda tetap terpisah. Dua versi berbeda membutuhkan pilihan. Jika kedua sumber memiliki ID profil yang berbeda, pengguna memilih satu karena perangkat hanya memiliki satu profil lokal.
 - Gabungan dengan relasi, hasil historis, atau slot unik yang bertentangan ditolak. Catatan waktu yang dipertahankan tetap terikat pada jadwal sumbernya. Aplikasi meminta tinjauan ulang jika data aktif berubah sebelum commit. Penghapusan dan penyisipan dilakukan dalam satu transaksi dalam urutan dependensi, dengan foreign key tetap aktif. Kegagalan memicu rollback. Rekonsiliasi pengingat berjalan sesudah commit.
+- Restore menolak snapshot yang akan menyembunyikan profil tunggal di Tempat Sampah. Merge menolak status Trash yang berbeda untuk ID target bersama. Pengguna masih dapat meninjau mode Ganti Semua. Jika hasil Merge identik dengan data aktif saat konfirmasi, aplikasi melewati penulisan ulang dan mempertahankan progres pengingat perangkat.
 - Cadence tersedia untuk 7, 14, 30, atau 1–365 hari khusus. Pemilih file memperbarui waktu backup terakhir setelah penyimpanan berhasil. Setelah berbagi, pengguna mengonfirmasi bahwa salinan sudah tersimpan di aplikasi tujuan. Penyedia cloud dikelola oleh OS dan mungkin belum selesai mengunggah saat berbagi selesai.
 
 ## Pustaka dan platform
@@ -42,4 +43,13 @@ Setiap entitas membawa ID stabil, jenis, revisi, waktu pembuatan/perubahan, rela
 
 Sumber dokumentasi dan riwayat rilis. [cryptography 2.9.0](https://pub.dev/packages/cryptography/versions/2.9.0) · [file_picker](https://pub.dev/packages/file_picker/changelog) · [share_plus 11.1.0](https://pub.dev/packages/share_plus/versions/11.1.0) · [share_plus 12.0.2](https://pub.dev/packages/share_plus/versions/12.0.2)
 
-Pemilih file dan menu berbagi dapat membuat salinan sementara dari file yang dipilih atau dibagikan. Untuk ekspor, salinan yang diteruskan ke adaptor dan penyedia file sudah terenkripsi. Aplikasi tidak membuat file export plaintext. Uji interoperabilitas memakai vektor Node.js/OpenSSL independen. Review keamanan format dan validasi berbagi serta pemilih file di perangkat iOS tetap diperlukan sebelum rilis.
+Impor memakai pembaca dokumen native yang membatasi stream. File di atas 32 MiB ditolak sebelum dipindah ke isolate. Ekspor memakai encoder JSON UTF-8 bertahap dengan batas payload. File sementara yang dibuat saat ekspor atau berbagi hanya berisi ciphertext. SQLite staging memakai penyimpanan dalam memori. SQLite aktif dan jurnal transaksinya tetap merupakan data lokal yang dilindungi sandbox dan kebijakan OS. [Kebijakan backup platform](BACKUP_PLATFORM_POLICY.md)
+
+Vektor Node.js/OpenSSL independen di `test/fixtures/backup_v1_vectors.cjs` memakai data sintetis dan memasukkan Unicode, deadline floating, manifest yang tidak cocok, dan ID ganda. Jalankan `node test/fixtures/backup_v1_vectors.cjs` untuk menghasilkan kembali konstanta fixture di `test/support/backup_vectors.dart`. Salt/nonce fixture deterministik. Jalur produksi mengambil 28 byte acak dengan `Random.secure()` pada setiap file. Salt 128 bit membedakan kunci turunan per ekspor dan nonce 96 bit diambil secara independen. Risiko tabrakan bersifat probabilistik. [Dart Random.secure](https://api.dart.dev/dart-math/Random/Random.secure.html)
+
+## Risiko dan keputusan terbuka
+
+- **Tinggi untuk rilis iOS.** Build, migrasi data perangkat, penanda pengecualian, picker, dan pertukaran file lintas OS berstatus PENDING.
+- **Sedang.** Password lemah masih memungkinkan penebakan offline. PBKDF2 membatasi laju tebakan dan string password dapat memiliki salinan di heap Dart. Tinjauan parameter dan keputusan suite berikutnya tetap OPEN-11.
+- **Sedang.** Kebutuhan memori mendekati batas file perlu diukur pada perangkat menengah ke bawah. Provider cloud mengendalikan unduhan dan salinan di luar sandbox aplikasi.
+- **OPEN-05/06.** Arsip lama dapat membawa kembali ID yang sudah dihapus permanen karena skema tidak menyimpan tombstone purge. Pemilihan grup konflik Trash dan migrasi skema file yang lebih lama memerlukan kebijakan.

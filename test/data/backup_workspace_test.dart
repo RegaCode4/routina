@@ -16,6 +16,7 @@ import 'package:routina/domain/preview_event.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../support/fake_notifications.dart';
+import '../support/backup_vectors.dart';
 
 const password = 'frasa uji backup 🔐';
 const cipher = BackupCipher();
@@ -66,6 +67,191 @@ void main() {
     DateTime.utc(2026, 11, 17, endHour),
     'UTC',
     TimeMode.originalZone,
+  );
+
+  test(
+    'restores a legacy v1 fixture with an exact Unicode password and floating deadline',
+    () async {
+      final local = await database('legacy-reader');
+      final workspace = service(local);
+      final bytes = portableBytes(legacyV1);
+      final before = await local.readBackup();
+      await expectLater(
+        workspace.openEncrypted(bytes, 'frasa uji é 🔐'),
+        throwsA(BackupIssue.authentication),
+      );
+      expect((await local.readBackup()).sameAs(before), isTrue);
+      final read = await workspace.openEncrypted(bytes, portablePassword);
+      await workspace.apply(
+        await workspace.review(read, RestoreMode.replace),
+        {},
+      );
+      expect((await local.readBackup()).sameAs(read.archive.snapshot), isTrue);
+      final task = (await local.tasks.find('fixture-task'))!;
+      expect(task.title, 'Catatan cafe\u0301 ☕');
+      expect(task.deadline?.instant, DateTime.utc(2026, 11, 17, 15, 30));
+      expect(task.deadline?.zoneId, 'Asia/Jakarta');
+      expect(task.deadline?.mode, TimeMode.localWallTime);
+      final tokyo = CalendarZones(deviceZoneId: 'Asia/Tokyo');
+      expect(
+        tokyo.effectiveTime(task.deadline!),
+        DateTime.utc(2026, 11, 17, 13, 30),
+      );
+      expect(
+        (await local.profiles.all()).single.preferences.backupReminderDays,
+        14,
+      );
+    },
+  );
+
+  test(
+    'negative authenticated input leaves the active snapshot unchanged',
+    () async {
+      final local = await database('transaction-guard');
+      final workspace = service(local);
+      final current = await local.readBackup();
+      final vector = portableBytes(legacyV1);
+      final truncated = Uint8List.sublistView(vector, 0, vector.length - 3);
+      final unsupported = await cipher.seal(
+        BackupArchive(
+          now,
+          BackupSnapshot(current.schemaVersion - 1, current.entities.values),
+        ),
+        portablePassword,
+      );
+      for (final (bytes, issue) in [
+        (truncated, BackupIssue.authentication),
+        (portableBytes(incorrectManifestV1), BackupIssue.invalidData),
+        (portableBytes(duplicateIdV1), BackupIssue.invalidData),
+        (unsupported, BackupIssue.unsupportedSchema),
+      ]) {
+        await expectLater(
+          workspace.openEncrypted(bytes, portablePassword),
+          throwsA(issue),
+        );
+        expect((await local.readBackup()).sameAs(current), isTrue);
+      }
+    },
+  );
+
+  test(
+    'rejects a backup that would hide the singleton profile in Trash',
+    () async {
+      final local = await database('hidden-profile');
+      final workspace = service(local);
+      final current = await local.readBackup();
+      final profile = current.entities.values.single;
+      final timestamp = now.microsecondsSinceEpoch;
+      final trash = BackupEntity(
+        record: {
+          'id': 'profile-tombstone',
+          'kind': 'trashEntry',
+          'parent_id': null,
+          'revision': 1,
+          'created_at_us': timestamp,
+          'updated_at_us': timestamp,
+        },
+        data: {
+          'id': 'profile-tombstone',
+          'target_id': profile.id,
+          'target_kind': 'profile',
+          'deleted_at_us': timestamp,
+          'restored_at_us': null,
+          'expires_at_us': now
+              .add(const Duration(days: 30))
+              .microsecondsSinceEpoch,
+          'series_cut': null,
+          'previous_series_end': null,
+          'archive_id': null,
+        },
+      );
+      final bytes = await cipher.seal(
+        BackupArchive(
+          now,
+          BackupSnapshot(current.schemaVersion, [profile, trash]),
+        ),
+        password,
+      );
+      await expectLater(
+        workspace.openEncrypted(bytes, password),
+        throwsA(BackupIssue.invalidData),
+      );
+      expect((await local.readBackup()).sameAs(current), isTrue);
+      expect((await local.profiles.all()).single.id, profile.id);
+    },
+  );
+
+  test(
+    'merge rejects divergent Trash state for a stable ID before review',
+    () async {
+      final local = await database('merge-active');
+      final incoming = await database('merge-trash');
+      final task = await local.tasks.save(
+        const Task(RecordMetadata(id: 'shared-task'), title: 'Tugas aktif'),
+      );
+      final localActive = await local.readBackup();
+      await incoming.commitBackup(await incoming.readBackup(), localActive);
+      final reference = (kind: RecordKind.task, id: task.id);
+      await incoming.softDelete(reference);
+      final workspace = service(local);
+      final archived = await workspace.openEncrypted(
+        await service(incoming).export(password),
+        password,
+      );
+      await expectLater(
+        workspace.review(archived, RestoreMode.merge),
+        throwsA(BackupIssue.trashConflict),
+      );
+      expect((await local.readBackup()).sameAs(localActive), isTrue);
+      expect(await local.tasks.find(task.id), isNotNull);
+      final incomingWorkspace = service(incoming);
+      final live = await incomingWorkspace.openEncrypted(
+        await workspace.export(password),
+        password,
+      );
+      await expectLater(
+        incomingWorkspace.review(live, RestoreMode.merge),
+        throwsA(BackupIssue.trashConflict),
+      );
+      expect(await incoming.tasks.find(task.id), isNull);
+    },
+  );
+
+  test(
+    'repeated Merge is a no-op for unchanged rows and reminder progress',
+    () async {
+      final local = await database('merge-repeat');
+      final workspace = service(local);
+      final legacy = await workspace.openEncrypted(
+        portableBytes(legacyV1),
+        portablePassword,
+      );
+      final first = await workspace.review(legacy, RestoreMode.merge);
+      await workspace.apply(first, {
+        first.conflicts.single.key: BackupChoice.local,
+      });
+      final progress = {
+        'test-reminder': (
+          firstSeen: now,
+          snoozedUntil: now.add(const Duration(minutes: 5)),
+        ),
+      };
+      await local.saveReminderProgress(progress);
+      final before = await local.readBackup();
+      var commits = 0;
+      local.afterCommit = () async {
+        commits++;
+      };
+      for (var index = 0; index < 2; index++) {
+        final review = await workspace.review(legacy, RestoreMode.merge);
+        await workspace.apply(review, {
+          review.conflicts.single.key: BackupChoice.local,
+        });
+      }
+      expect(commits, 0);
+      expect(await local.reminderProgress(), progress);
+      expect((await local.readBackup()).sameAs(before), isTrue);
+    },
   );
 
   test(

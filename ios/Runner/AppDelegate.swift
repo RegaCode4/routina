@@ -1,10 +1,12 @@
 import Flutter
 import UIKit
+import UniformTypeIdentifiers
 import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let reminders = RoutinaNotifications()
+  private let backups = RoutinaBackupStorage()
 
   override func application(
     _ application: UIApplication,
@@ -16,6 +18,13 @@ import UserNotifications
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RoutinaBackupStorage") {
+      FlutterMethodChannel(
+        name: "routina/backup_storage", binaryMessenger: registrar.messenger()
+      ).setMethodCallHandler { [weak self] call, result in
+        self?.backups.handle(call, result: result)
+      }
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RoutinaDeviceTimeZone") {
       FlutterMethodChannel(
         name: "routina/device_time_zone", binaryMessenger: registrar.messenger()
@@ -34,6 +43,164 @@ import UserNotifications
         self?.reminders.handle(call, result: result)
       }
     }
+  }
+}
+
+private final class RoutinaBackupStorage: NSObject, UIDocumentPickerDelegate {
+  private static let maximumSize = 32 * 1024 * 1024
+  private static let sidecars = ["-wal", "-shm", "-journal"]
+  private var pending: FlutterResult?
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "databasePath":
+      do {
+        result(try Self.databasePath())
+      } catch {
+        result(FlutterError(code: "storageUnavailable", message: nil, details: nil))
+      }
+    case "pick":
+      guard pending == nil, let presenter = Self.presenter() else {
+        result(Self.fileError("unavailable"))
+        return
+      }
+      let picker: UIDocumentPickerViewController
+      if #available(iOS 14.0, *) {
+        picker = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: false)
+      } else {
+        picker = UIDocumentPickerViewController(documentTypes: ["public.item"], in: .open)
+      }
+      pending = result
+      picker.delegate = self
+      presenter.present(picker, animated: true)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private static func presenter() -> UIViewController? {
+    let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+      .filter { $0.activationState == .foregroundActive }
+      .flatMap { $0.windows }
+    var controller = windows.first(where: { $0.isKeyWindow })?.rootViewController
+    while let next = controller?.presentedViewController { controller = next }
+    return controller
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    finish(nil)
+  }
+
+  func documentPicker(
+    _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
+  ) {
+    guard let url = urls.first else {
+      finish(Self.fileError("unavailable"))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      let value: Any
+      do {
+        let bytes = try Self.readDocument(url)
+        value = ["name": url.lastPathComponent, "bytes": FlutterStandardTypedData(bytes: bytes)]
+      } catch ReadError.tooLarge {
+        value = Self.fileError("tooLarge")
+      } catch {
+        value = Self.fileError("unavailable")
+      }
+      DispatchQueue.main.async { self.finish(value) }
+    }
+  }
+
+  private func finish(_ value: Any?) {
+    let result = pending
+    pending = nil
+    result?(value)
+  }
+
+  private enum ReadError: Error { case tooLarge, unavailable }
+
+  private static func fileError(_ code: String) -> FlutterError {
+    FlutterError(code: code, message: nil, details: nil)
+  }
+
+  private static func readDocument(_ url: URL) throws -> Data {
+    let accessed = url.startAccessingSecurityScopedResource()
+    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+    var coordinationError: NSError?
+    var output: Result<Data, Error>?
+    NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { file in
+      output = Result {
+        if let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+           size > maximumSize { throw ReadError.tooLarge }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var bytes = Data()
+        while let chunk = try handle.read(upToCount: 64 * 1024), !chunk.isEmpty {
+          guard chunk.count <= maximumSize - bytes.count else { throw ReadError.tooLarge }
+          bytes.append(chunk)
+        }
+        return bytes
+      }
+    }
+    if let coordinationError = coordinationError { throw coordinationError }
+    guard let output = output else { throw ReadError.unavailable }
+    return try output.get()
+  }
+
+  private static func databasePath() throws -> String {
+    let fs = FileManager.default
+    let support = try fs.url(
+      for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+    )
+    let directory = support.appendingPathComponent("RoutinaPlanner", isDirectory: true)
+    try fs.createDirectory(at: directory, withIntermediateDirectories: true)
+    try exclude(directory)
+
+    let documents = try fs.url(
+      for: .documentDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+    )
+    let current = directory.appendingPathComponent("routina.db")
+    let legacy = documents.appendingPathComponent("routina.db")
+    let hasCurrent = try exists(current)
+    let hasLegacy = try exists(legacy)
+    let formerSidecars = try sidecars.map { URL(fileURLWithPath: legacy.path + $0) }.filter(exists)
+    let currentSidecars = try sidecars.map { URL(fileURLWithPath: current.path + $0) }.filter(exists)
+    // Never initialize an empty store when a legacy store or orphaned journal
+    // needs attention. Move only the standalone database within the container.
+    guard !(hasCurrent && hasLegacy),
+          hasLegacy || formerSidecars.isEmpty,
+          hasCurrent || currentSidecars.isEmpty else { throw ReadError.unavailable }
+    if hasLegacy {
+      try exclude(legacy)
+      if !formerSidecars.isEmpty {
+        for file in formerSidecars { try exclude(file) }
+        return legacy.path
+      }
+      try fs.moveItem(at: legacy, to: current)
+    }
+    return current.path
+  }
+
+  private static func exists(_ item: URL) throws -> Bool {
+    do {
+      guard try item.checkResourceIsReachable() else { return false }
+      guard try item.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        throw ReadError.unavailable
+      }
+      return true
+    } catch let error as NSError
+      where error.domain == NSCocoaErrorDomain &&
+        (error.code == NSFileNoSuchFileError || error.code == NSFileReadNoSuchFileError) {
+      return false
+    }
+  }
+
+  private static func exclude(_ item: URL) throws {
+    var item = item
+    var values = URLResourceValues()
+    values.isExcludedFromBackup = true
+    try item.setResourceValues(values)
   }
 }
 
