@@ -95,8 +95,10 @@ class DemoBackup extends StatelessWidget {
               : 'Setiap ${demo.backupReminder} hari',
           onTap: () => _reminder(context),
         ),
-        const Text(
-          'Simulasi. File, enkripsi, dan pengingat perangkat tidak dijalankan.',
+        Text(
+          demo.planner.localReminders == null
+              ? 'Simulasi. File, enkripsi, dan pengingat perangkat tidak dijalankan.'
+              : 'Ekspor dan pemulihan memakai data contoh. Pengingat backup mengikuti izin perangkat dan Jam Tenang.',
           style: NeoType.caption,
         ),
       ]),

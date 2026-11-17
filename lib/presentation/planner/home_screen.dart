@@ -8,6 +8,7 @@ import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/design_system/planner_cards.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
+import 'package:routina/presentation/planner/reminder_ui.dart';
 
 class PlannerHome extends StatefulWidget {
   const PlannerHome({
@@ -76,16 +77,33 @@ class _PlannerHomeState extends State<PlannerHome> {
               ),
             ),
             const SizedBox(width: NeoSpace.sm),
-            NeoIconButton(
-              icon: profile.notifications
-                  ? Icons.notifications_none
-                  : Icons.notifications_off_outlined,
-              label: 'Pengingat',
-              indicator: widget.repository.homeEntries.any(
-                (entry) => entry.state == PreviewEventState.pending,
+            if (widget.repository.localReminders case final service?)
+              ListenableBuilder(
+                listenable: service,
+                builder: (context, _) => NeoIconButton(
+                  icon: service.dashboard.sendsToSystem
+                      ? Icons.notifications_none
+                      : Icons.notifications_off_outlined,
+                  label: 'Pengingat',
+                  indicator:
+                      service.dashboard.reminders.isNotEmpty ||
+                      widget.repository.homeEntries.any(
+                        (entry) => entry.state == PreviewEventState.pending,
+                      ),
+                  onPressed: () => _reminders(context),
+                ),
+              )
+            else
+              NeoIconButton(
+                icon: profile.notifications
+                    ? Icons.notifications_none
+                    : Icons.notifications_off_outlined,
+                label: 'Pengingat',
+                indicator: widget.repository.homeEntries.any(
+                  (entry) => entry.state == PreviewEventState.pending,
+                ),
+                onPressed: () => _reminders(context),
               ),
-              onPressed: () => _reminders(context),
-            ),
           ],
         ),
         const SizedBox(height: NeoSpace.sm),
@@ -181,7 +199,28 @@ class _PlannerHomeState extends State<PlannerHome> {
           ),
           const SizedBox(height: NeoSpace.md),
         ],
-        if (!profile.notifications) ...[
+        if (widget.repository.localReminders case final service?) ...[
+          NotificationStatusNotice(service),
+          ListenableBuilder(
+            listenable: service,
+            builder: (context, _) {
+              final reminders = service.dashboard.reminders;
+              if (reminders.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: NeoSpace.sm),
+                child: PreviewNotice(
+                  title: 'Pengingat di Home',
+                  message: '${reminders.first.title} · ${reminders.first.body}',
+                  button: NeoButton(
+                    label: 'Lihat pengingat',
+                    variant: NeoButtonVariant.secondary,
+                    onPressed: () => _reminders(context),
+                  ),
+                ),
+              );
+            },
+          ),
+        ] else if (!profile.notifications) ...[
           PreviewNotice(
             title: 'Notifikasi nonaktif',
             message: 'Pengingat tetap tersedia di Home.',
@@ -349,43 +388,50 @@ class _PlannerHomeState extends State<PlannerHome> {
     );
   }
 
-  Future<void> _reminders(BuildContext context) => showNeoBottomSheet<void>(
-    context,
-    builder: (_) => NeoBottomSheet(
-      title: 'Pengingat',
-      description: widget.repository.profile!.notifications
-          ? 'Aktivitas yang menunggu konfirmasi.'
-          : 'Notifikasi nonaktif. Pengingat tetap tersedia di Home.',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final entry in widget.repository.homeEntries.where(
-            (entry) =>
-                entry.kind == PreviewKind.activity &&
-                entry.state == PreviewEventState.pending,
-          ))
-            Padding(
-              padding: const EdgeInsets.only(bottom: NeoSpace.xs),
-              child: ActivityCard(
-                title: entry.title,
-                time: eventTime(entry),
-                status: NeoStatus.pending,
-                onTap: () {
-                  Navigator.of(context).pop();
-                  widget.onConfirm(entry);
-                },
-              ),
-            ),
-          if (!widget.repository.homeEntries.any(
-            (entry) =>
-                entry.kind == PreviewKind.activity &&
-                entry.state == PreviewEventState.pending,
-          ))
-            const Text('Belum ada pengingat.'),
-        ],
+  Future<void> _reminders(BuildContext context) {
+    if (widget.repository.localReminders case final service?) {
+      return showReminderInbox(context, service, pending: _pendingReminders);
+    }
+    return showNeoBottomSheet<void>(
+      context,
+      builder: (sheet) => NeoBottomSheet(
+        title: 'Pengingat',
+        description: widget.repository.profile!.notifications
+            ? 'Aktivitas yang menunggu konfirmasi.'
+            : 'Notifikasi nonaktif. Pengingat tetap tersedia di Home.',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ..._pendingReminders(sheet),
+            if (!widget.repository.homeEntries.any(
+              (entry) =>
+                  entry.kind == PreviewKind.activity &&
+                  entry.state == PreviewEventState.pending,
+            ))
+              const Text('Belum ada pengingat.'),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
+
+  List<Widget> _pendingReminders(BuildContext sheet) => [
+    for (final entry in widget.repository.homeEntries)
+      if (entry.kind == PreviewKind.activity &&
+          entry.state == PreviewEventState.pending)
+        Padding(
+          padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+          child: ActivityCard(
+            title: entry.title,
+            time: eventTime(entry),
+            status: NeoStatus.pending,
+            onTap: () {
+              Navigator.pop(sheet);
+              widget.onConfirm(entry);
+            },
+          ),
+        ),
+  ];
 }
 
 class _HomeKpis extends StatelessWidget {

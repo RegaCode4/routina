@@ -55,12 +55,23 @@ class _AppShellState extends State<AppShell> {
     if (mounted) setState(() => _revision++);
   }
 
+  void _refreshClock() {
+    final reminders = widget.repository.localReminders;
+    if (reminders != null) unawaited(reminders.refresh());
+    _refresh();
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.repository.usesStoredCalendar) {
-      _ticker = Timer.periodic(const Duration(minutes: 1), (_) => _refresh());
-      _lifecycle = AppLifecycleListener(onResume: _refresh);
+      final reminders = widget.repository.localReminders;
+      if (reminders != null) unawaited(reminders.refresh());
+      _ticker = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => _refreshClock(),
+      );
+      _lifecycle = AppLifecycleListener(onResume: _refreshClock);
     }
   }
 

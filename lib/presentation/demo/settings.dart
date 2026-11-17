@@ -9,6 +9,8 @@ import 'package:routina/presentation/design_system/neo_form_field.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
+import 'package:routina/presentation/planner/notification_settings.dart';
+import 'package:routina/presentation/planner/reminder_ui.dart';
 import 'package:routina/presentation/planner/setup_screens.dart';
 
 import 'package:routina/presentation/demo/backup.dart';
@@ -51,7 +53,9 @@ class DemoProfile extends StatelessWidget {
               ],
             ),
           ),
-          if (demo.permission == 'Ditolak')
+          if (demo.planner.localReminders case final service?)
+            NotificationStatusNotice(service)
+          else if (demo.permission == 'Ditolak')
             PreviewNotice(
               title: 'Notifikasi perangkat belum aktif',
               message: 'Pengingat tetap dapat dilihat di Home.',
@@ -433,7 +437,12 @@ class DemoNotifications extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
+  Widget build(BuildContext context) => switch (demo.planner.localReminders) {
+    final service? => NotificationSettings(demo, service),
+    null => _preview(context),
+  };
+
+  Widget _preview(BuildContext context) => ListenableBuilder(
     listenable: demo,
     builder: (context, _) => PreviewPage(
       title: 'Notifikasi',

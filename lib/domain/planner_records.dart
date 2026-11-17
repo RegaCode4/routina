@@ -122,7 +122,23 @@ typedef DailyHours = ({int startMinute, int endMinute});
 
 typedef SessionLimits = ({int minimumMinutes, int maximumSessions});
 
-enum ReminderKind { event, deadline, workSession, routine }
+enum ReminderKind {
+  event('Sebelum kegiatan'),
+  eventStart('Saat mulai kegiatan'),
+  deadline('Tenggat tugas'),
+  workSession('Sesi pengerjaan'),
+  routine('Rutinitas'),
+  morning('Ringkasan pagi'),
+  conflict('Bentrok jadwal'),
+  timerGoal('Target durasi timer'),
+  confirmation('Konfirmasi hasil kegiatan'),
+  backup('Backup');
+
+  const ReminderKind(this.label);
+  final String label;
+}
+
+typedef ReminderProgress = ({DateTime? firstSeen, DateTime? snoozedUntil});
 
 class PlannerPreferences {
   const PlannerPreferences({
@@ -136,6 +152,10 @@ class PlannerPreferences {
     this.quietExceptionsEnabled = false,
     this.backupReminderDays,
     this.sessionLimits,
+    this.morningMinute,
+    this.confirmationCount = 1,
+    this.confirmationIntervalMinutes = 30,
+    this.backupReminderSince,
   });
 
   final String? calendarZoneId;
@@ -148,6 +168,12 @@ class PlannerPreferences {
   final bool quietExceptionsEnabled;
   final int? backupReminderDays;
   final SessionLimits? sessionLimits;
+  final int? morningMinute;
+  final int confirmationCount;
+  final int confirmationIntervalMinutes;
+  final DateTime? backupReminderSince;
+
+  bool allowsReminder(ReminderKind kind) => reminderTypes[kind] ?? true;
 
   PlannerPreferences copyWith({
     String? calendarZoneId,
@@ -162,6 +188,11 @@ class PlannerPreferences {
     int? backupReminderDays,
     bool disableBackupReminder = false,
     SessionLimits? sessionLimits,
+    int? morningMinute,
+    bool disableMorning = false,
+    int? confirmationCount,
+    int? confirmationIntervalMinutes,
+    DateTime? backupReminderSince,
   }) => PlannerPreferences(
     calendarZoneId: useDeviceZone
         ? null
@@ -178,6 +209,13 @@ class PlannerPreferences {
         ? null
         : backupReminderDays ?? this.backupReminderDays,
     sessionLimits: sessionLimits ?? this.sessionLimits,
+    morningMinute: disableMorning ? null : morningMinute ?? this.morningMinute,
+    confirmationCount: confirmationCount ?? this.confirmationCount,
+    confirmationIntervalMinutes:
+        confirmationIntervalMinutes ?? this.confirmationIntervalMinutes,
+    backupReminderSince: disableBackupReminder
+        ? null
+        : backupReminderSince ?? this.backupReminderSince,
   );
 }
 

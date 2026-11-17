@@ -51,15 +51,24 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
   Database get _database => _executor as Database;
 
   @override
-  Future<T> transaction<T>(Future<T> Function(PlannerData data) action) {
-    return _database.transaction((txn) async {
+  set afterCommit(Future<void> Function()? callback) => _afterCommit = callback;
+
+  @override
+  Future<T> transaction<T>(Future<T> Function(PlannerData data) action) async {
+    var changed = false;
+    final result = await _database.transaction((txn) async {
       final data = _SqliteData(txn, _now);
       final result = await action(data);
       if (data._writeFailure case (final error, final stack)) {
         Error.throwWithStackTrace(error, stack);
       }
+      changed = data._changed;
       return result;
     });
+    if (_afterCommit case final callback? when changed) {
+      await callback();
+    }
+    return result;
   }
 
   @override
@@ -72,18 +81,56 @@ class _SqliteData implements PlannerData {
   final DatabaseExecutor _executor;
   final DateTime Function() _now;
   (Object, StackTrace)? _writeFailure;
+  bool _changed = false;
+  Future<void> Function()? _afterCommit;
 
-  Future<T> _write<T>(Future<T> Function(DatabaseExecutor) action) async {
+  Future<T> _write<T>(
+    Future<T> Function(DatabaseExecutor) action, {
+    bool notify = true,
+  }) async {
     final executor = _executor;
-    if (executor is Database) return executor.transaction(action);
+    if (executor is Database) {
+      final result = await executor.transaction(action);
+      if (_afterCommit case final callback? when notify) {
+        await callback();
+      }
+      return result;
+    }
     try {
-      return await action(executor);
+      final result = await action(executor);
+      _changed |= notify;
+      return result;
     } catch (error, stack) {
       // A failed sequence can have written earlier statements in this scope.
       _writeFailure ??= (error, stack);
       rethrow;
     }
   }
+
+  @override
+  Future<Map<String, ReminderProgress>> reminderProgress() async => {
+    for (final row in await _executor.query('reminder_progress'))
+      row.text('id'): (
+        firstSeen: row.optionalInstant('first_seen_us'),
+        snoozedUntil: row.optionalInstant('snoozed_until_us'),
+      ),
+  };
+
+  @override
+  Future<void> saveReminderProgress(Map<String, ReminderProgress> progress) =>
+      _write((db) async {
+        final batch = db.batch();
+        batch.delete('reminder_progress');
+        for (final entry in progress.entries) {
+          batch.insert('reminder_progress', {
+            'id': entry.key,
+            'first_seen_us': entry.value.firstSeen?.microsecondsSinceEpoch,
+            'snoozed_until_us':
+                entry.value.snoozedUntil?.microsecondsSinceEpoch,
+          });
+        }
+        await batch.commit(noResult: true);
+      }, notify: false);
 
   @override
   late final RecordRepository<Profile> profiles = _SqliteRepository(

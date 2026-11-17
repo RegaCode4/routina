@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/read_today.dart';
 import 'package:routina/data/device_clock.dart';
+import 'package:routina/data/device_notifications.dart';
 import 'package:routina/data/local/sqlite_planner_store.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/data/stored_planner_profile.dart';
@@ -42,6 +43,7 @@ void main() {
           ? StoredPlannerProfile(
               today: today,
               openStore: SqlitePlannerStore.open,
+              notificationPlatform: const DeviceNotifications(),
               readDeviceZone: () async {
                 try {
                   const channel = MethodChannel('routina/device_time_zone');

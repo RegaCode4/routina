@@ -105,6 +105,10 @@ Tes `test/data/sqlite_planner_store_test.dart` memakai file database sementara u
 - **PROPOSED** · SQLite v6 menyimpan batas per tugas dan durasi aktual saat estimasi sisa dikonfirmasi. Batas maksimum menghitung sesi yang masih mendatang, termasuk sesi yang dipertahankan. Batas profil dapat diisi dari pengaturan kalender. Jika batas profil dan tugas belum ada, pengguna memasukkan batas di pencarian. Batas khusus tugas tersimpan ketika perubahan jadwal disetujui. Angka contoh FigCraft tetap menjadi referensi visual.
 - **PROPOSED** · Input aktual minimal memakai catatan manual dalam menit setelah sesi berakhir. Beberapa `TimeLog` per sesi dijumlahkan, dan catatan baru meminta konfirmasi ulang estimasi sisa. OPEN-01 masih mencakup timer tugas dan kebijakan koreksi log. Notifikasi sistem untuk konflik tetap mengikuti fase pengingat. Pencarian slot pengganti kegiatan memakai jendela tujuh hari.
 
+## Fase 11 · Notifikasi lokal
+
+Post-commit SQLite memicu rekonsiliasi pengingat dengan agenda yang memakai aturan zona, pengulangan, status, dan Tempat Sampah yang sama. Kesalahan pengiriman sistem tampil di Home dan pengaturan, sementara perubahan jadwal yang sudah tersimpan tetap berlaku. Adaptor Android dan iOS menjadwalkan pengiriman lewat layanan OS. Lihat [keputusan Jam Tenang dan batasan perangkat](NOTIFICATIONS.md).
+
 ## Result, exception, dan lifecycle
 
 - Use case mengekspresikan hasil yang dapat ditangani sebagai `Success<T>` atau `Failure<T>`. `ReadToday` mempertahankan exception dan stack untuk diagnosis bila port gagal. Tampilan Home memakai pesan Indonesia yang aman dan aksi Coba lagi. Error pemrograman merambat ke handler framework.

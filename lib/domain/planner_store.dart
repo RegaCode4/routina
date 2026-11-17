@@ -31,6 +31,8 @@ abstract interface class PlannerData {
   Future<List<RoutineGoalEvent>> routineGoalEvents();
   Future<void> saveRoutineGoalEvent(RoutineGoalEvent event);
   Future<void> removeRoutineGoalEvent(String occurrenceId);
+  Future<Map<String, ReminderProgress>> reminderProgress();
+  Future<void> saveReminderProgress(Map<String, ReminderProgress> progress);
 
   /// Calendar intervals overlap a half-open range. Deadlines are points.
   Future<List<CalendarEntry>> calendar(DateTime from, DateTime until);
@@ -55,6 +57,9 @@ bool isCategoryNameAvailable(
 }
 
 abstract interface class PlannerStore implements PlannerData {
+  /// Called after a successful mutation, outside the SQLite transaction.
+  set afterCommit(Future<void> Function()? callback);
+
   /// Use the supplied data access for every operation inside the transaction.
   Future<T> transaction<T>(Future<T> Function(PlannerData data) action);
   Future<void> close();

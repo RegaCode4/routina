@@ -1,3 +1,4 @@
+import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
@@ -18,6 +19,8 @@ enum PreviewFixture {
 }
 
 class MemoryPlannerPreview implements PlannerPreviewRepository {
+  @override
+  LocalReminders? get localReminders => null;
   @override
   TaskWorkspace? get taskWorkspace => null;
 

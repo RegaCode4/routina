@@ -172,6 +172,11 @@ String _writePreferences(PlannerPreferences value) => jsonEncode({
   'backupReminderDays': value.backupReminderDays,
   'minimumSessionMinutes': value.sessionLimits?.minimumMinutes,
   'maximumSessions': value.sessionLimits?.maximumSessions,
+  'morningMinute': value.morningMinute,
+  'confirmationCount': value.confirmationCount,
+  'confirmationIntervalMinutes': value.confirmationIntervalMinutes,
+  'backupReminderSince': value.backupReminderSince?.toIso8601String(),
+  'separateEventStart': true,
 });
 
 PlannerPreferences _readPreferences(String source) {
@@ -183,7 +188,15 @@ PlannerPreferences _readPreferences(String source) {
       values['reminderTypes'] as Map<String, dynamic>? ?? const {};
   final quietExceptions =
       values['quietExceptions'] as List<dynamic>? ?? const [];
+  final legacyEventType = values['separateEventStart'] != true;
   return PlannerPreferences(
+    morningMinute: values['morningMinute'] as int?,
+    confirmationCount: values['confirmationCount'] as int? ?? 1,
+    confirmationIntervalMinutes:
+        values['confirmationIntervalMinutes'] as int? ?? 30,
+    backupReminderSince: DateTime.tryParse(
+      values['backupReminderSince'] as String? ?? '',
+    ),
     sessionLimits: _sessionLimits(
       values['minimumSessionMinutes'] as int?,
       values['maximumSessions'] as int?,
@@ -196,10 +209,17 @@ PlannerPreferences _readPreferences(String source) {
     reminderTypes: {
       for (final kind in ReminderKind.values)
         if (reminderTypes[kind.name] case final bool enabled) kind: enabled,
+      if (legacyEventType &&
+          !reminderTypes.containsKey(ReminderKind.eventStart.name))
+        if (reminderTypes[ReminderKind.event.name] case final bool enabled)
+          ReminderKind.eventStart: enabled,
     },
-    quietExceptions: ReminderKind.values
-        .where((kind) => quietExceptions.contains(kind.name))
-        .toSet(),
+    quietExceptions: {
+      for (final kind in ReminderKind.values)
+        if (quietExceptions.contains(kind.name)) kind,
+      if (legacyEventType && quietExceptions.contains(ReminderKind.event.name))
+        ReminderKind.eventStart,
+    },
     quietExceptionsEnabled: values['quietExceptionsEnabled'] as bool? ?? false,
     backupReminderDays: values['backupReminderDays'] as int?,
   );

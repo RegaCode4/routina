@@ -9,6 +9,26 @@ import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/domain/scheduling_engine.dart';
 
+typedef ReminderCalendarItem = ({
+  String id,
+  String title,
+  CalendarEntryKind kind,
+  ActivityStatus status,
+  String obligationId,
+  DateTime start,
+  DateTime end,
+  bool allDay,
+  bool deviceTime,
+  List<String> reminders,
+});
+
+typedef CalendarConflict = ({
+  String key,
+  String title,
+  DateTime until,
+  bool deviceTime,
+});
+
 class ActivityCalendar {
   ActivityCalendar(
     this.store,
@@ -25,6 +45,88 @@ class ActivityCalendar {
   final List<Category> categories;
 
   static const conflictHorizonDays = 90;
+
+  /// Shares the recurrence, exception, tombstone and zone projection used
+  /// by the agenda. Reminder times stay in UTC across repeated wall hours.
+  Future<({List<ReminderCalendarItem> items, List<CalendarConflict> conflicts})>
+  reminderCalendar(PlannerData data, DateTime from, DateTime until) async {
+    final rows = await _paddedEntries(
+      data,
+      await _snapshot(data),
+      from,
+      until,
+      Duration.zero,
+    );
+    final busy = rows.where((row) => row.blocks).toList()
+      ..sort((a, b) {
+        final start = a.start.compareTo(b.start);
+        return start == 0 ? a.id.compareTo(b.id) : start;
+      });
+    final conflicts = <CalendarConflict>[];
+    final current = now().toUtc();
+    final largestBefore = busy.fold(
+      Duration.zero,
+      (duration, row) => row.before > duration ? row.before : duration,
+    );
+    for (final (i, left) in busy.indexed) {
+      final cutoff = left.end.add(left.after + largestBefore);
+      if (!cutoff.isAfter(current)) continue;
+      for (
+        var j = i + 1;
+        j < busy.length && busy[j].start.isBefore(cutoff);
+        j++
+      ) {
+        final right = busy[j];
+        final leftPending =
+            left.end.isAfter(current) && left.status == ActivityStatus.planned;
+        final rightPending =
+            right.end.isAfter(current) &&
+            right.status == ActivityStatus.planned;
+        if ((!leftPending && !rightPending) ||
+            (left.routineLink != null &&
+                left.routineLink == right.routineLink) ||
+            !overlapsSlot(
+              left.busy.slot,
+              bufferedSlot(right.busy, before: left.before, after: left.after),
+            )) {
+          continue;
+        }
+        final until =
+            !rightPending || (leftPending && left.end.isBefore(right.end))
+            ? left.end
+            : right.end;
+        conflicts.add((
+          key:
+              'conflict:${left.id}:${left.start.millisecondsSinceEpoch}:'
+              '${left.end.millisecondsSinceEpoch}:${right.id}:'
+              '${right.start.millisecondsSinceEpoch}:${right.end.millisecondsSinceEpoch}',
+          title: '${left.title} · ${right.title}',
+          until: until,
+          deviceTime: left.deviceTime || right.deviceTime,
+        ));
+      }
+    }
+    return (
+      items: [
+        for (final row in rows)
+          if (row.start.isBefore(until) && row.end.isAfter(from))
+            (
+              id: row.id,
+              title: row.title,
+              status: row.status!,
+              kind: row.other?.kind ?? CalendarEntryKind.event,
+              obligationId:
+                  row.other?.obligationId ?? row.routineLink ?? row.id,
+              start: row.start,
+              end: row.end,
+              allDay: row.allDay,
+              deviceTime: row.deviceTime,
+              reminders: row.event?.details.reminders ?? const <String>[],
+            ),
+      ],
+      conflicts: conflicts,
+    );
+  }
 
   Future<List<PreviewEvent>> read(DateTime from, DateTime until) async {
     if (!civilTime(from).isBefore(civilTime(until))) {
@@ -1096,9 +1198,19 @@ class _Entry {
   final Duration before, after;
   final EventOccurrence? event;
   final CalendarEntry? other;
+  ActivityStatus? get status => event?.status ?? other?.status;
+  bool get allDay =>
+      (event?.availability ?? other?.availability ?? EventAvailability.timed) !=
+      EventAvailability.timed;
+  bool get deviceTime =>
+      allDay ||
+      (event?.schedule.start.mode ?? other?.startTime?.mode) ==
+          TimeMode.localWallTime;
+  String? get routineLink =>
+      event?.routineOccurrenceId ??
+      (other?.kind == CalendarEntryKind.routine ? id : null);
 
   bool get blocks {
-    final status = event?.status ?? other?.status;
     return other?.kind != CalendarEntryKind.deadline &&
         (event?.availability ?? other?.availability) !=
             EventAvailability.allDayFree &&

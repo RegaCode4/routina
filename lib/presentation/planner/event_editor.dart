@@ -1,3 +1,5 @@
+import 'package:routina/application/local_reminders.dart';
+import 'package:routina/presentation/planner/reminder_ui.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -284,47 +286,34 @@ class _EventEditorState extends State<EventEditor> {
   }
 
   Future<void> _reminders() async {
-    const values = ['1 hari sebelumnya', '30 menit sebelumnya', 'Saat mulai'];
-    final selected = {..._draft.reminders};
-    final next = await showNeoBottomSheet<List<String>>(
+    final selected = _draft.reminders.map(eventReminderOffset).nonNulls.toSet();
+    final next = await pickReminderOffsets(
       context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, update) => NeoBottomSheet(
-          title: 'Pengingat lokal',
-          description: widget.repository.usesStoredCalendar
-              ? 'Waktu pengingat disimpan untuk kegiatan ini.'
-              : 'Pilihan berlaku pada pratinjau selama sesi.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final option in values)
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: selected.contains(option),
-                  title: Text(option),
-                  onChanged: (checked) => update(() {
-                    if (checked == true) {
-                      selected.add(option);
-                    } else {
-                      selected.remove(option);
-                    }
-                  }),
-                ),
-              NeoButton(
-                label: 'Terapkan pengingat',
-                onPressed: () => Navigator.pop(
-                  context,
-                  values.where(selected.contains).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      title: 'Pengingat lokal',
+      label: _eventReminderLabel,
+      selected: selected,
+      presets: const [Duration(days: 1), Duration(minutes: 30), Duration.zero],
+      custom: widget.repository.usesStoredCalendar,
     );
-    if (mounted && next != null) _change(() => _draft.reminders = next);
+    if (mounted && next != null) {
+      _change(
+        () => _draft.reminders = [
+          ..._draft.reminders.where(
+            (label) => eventReminderOffset(label) == null,
+          ),
+          ...(next.toList()..sort((a, b) => b.compareTo(a))).map(
+            _eventReminderLabel,
+          ),
+        ],
+      );
+    }
   }
 
+  String _eventReminderLabel(Duration offset) => switch (offset.inMinutes) {
+    0 => 'Saat mulai',
+    1440 => '1 hari sebelumnya',
+    final minutes => '$minutes menit sebelumnya',
+  };
   Future<void> _recurrence() async {
     final option = await previewChoices(context, 'Pola pengulangan', [
       'Sekali',

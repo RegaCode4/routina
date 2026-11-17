@@ -1,11 +1,19 @@
 package com.example.routina
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.TimeZone
 
 class MainActivity : FlutterActivity() {
+    private var permissionResult: MethodChannel.Result? = null
+    private var firstReminderSync = true
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/device_time_zone")
@@ -15,5 +23,53 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/notifications")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "permission" -> result.success(LocalReminders.permission(this))
+                        "request" -> {
+                            if (Build.VERSION.SDK_INT >= 33 &&
+                                LocalReminders.permission(this) == "notDetermined" && permissionResult == null
+                            ) {
+                                permissionResult = result
+                                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 710)
+                            } else {
+                                result.success(null)
+                            }
+                        }
+                        "settings" -> {
+                            val intent = if (Build.VERSION.SDK_INT >= 26) {
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+                            }
+                            startActivity(intent)
+                            result.success(null)
+                        }
+                        "sync" -> {
+                            LocalReminders.synchronize(this, call.arguments as Map<*, *>, firstReminderSync)
+                            firstReminderSync = false
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (error: Exception) {
+                    if (permissionResult === result) permissionResult = null
+                    result.error("notifications", error.message, null)
+                }
+            }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 710) {
+            if (grantResults.isNotEmpty()) LocalReminders.recordPermissionRequest(this)
+            permissionResult?.success(null)
+            permissionResult = null
+        }
     }
 }

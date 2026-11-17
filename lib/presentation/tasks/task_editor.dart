@@ -1,3 +1,4 @@
+import 'package:routina/presentation/planner/reminder_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/task_workspace.dart';
@@ -219,36 +220,12 @@ class _TaskEditorState extends State<TaskEditor> {
   }
 
   Future<void> _editReminders() async {
-    const offsets = [Duration.zero, Duration(hours: 1), Duration(days: 1)];
-    final selected = {..._reminders};
-    final result = await demoSheet<Set<Duration>>(
+    final result = await pickReminderOffsets(
       context,
-      'Pengingat tenggat',
-      (sheet) => [
-        StatefulBuilder(
-          builder: (_, update) => Column(
-            children: [
-              for (final offset in {...offsets, ..._reminders})
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(_reminderLabel(offset)),
-                  value: selected.contains(offset),
-                  onChanged: (checked) => update(() {
-                    if (checked == true) {
-                      selected.add(offset);
-                    } else {
-                      selected.remove(offset);
-                    }
-                  }),
-                ),
-            ],
-          ),
-        ),
-        NeoButton(
-          label: 'Terapkan pengingat',
-          onPressed: () => Navigator.pop(sheet, selected),
-        ),
-      ],
+      title: 'Pengingat tenggat',
+      label: _reminderLabel,
+      selected: _reminders,
+      presets: const [Duration(days: 1), Duration(hours: 1), Duration.zero],
     );
     if (mounted && result != null) {
       setState(() {

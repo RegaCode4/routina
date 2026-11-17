@@ -1,5 +1,6 @@
 import 'package:routina/application/activity_calendar.dart';
 import 'package:routina/application/calendar_zones.dart';
+import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
@@ -15,14 +16,17 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     required Future<PlannerStore> Function() openStore,
     Future<String> Function()? readDeviceZone,
     DateTime Function()? now,
+    NotificationPlatform? notificationPlatform,
   }) : _openStore = openStore,
        _readDeviceZone = readDeviceZone,
+       _notificationPlatform = notificationPlatform,
        _now = now ?? DateTime.now,
        super(seedCategories: false, fixture: PreviewFixture.empty);
 
   final Future<PlannerStore> Function() _openStore;
   final Future<String> Function()? _readDeviceZone;
   final DateTime Function() _now;
+  final NotificationPlatform? _notificationPlatform;
   PlannerStore? _store;
   Future<PlannerStore>? _opening;
   List<Category> _savedCategories = const [];
@@ -34,7 +38,12 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     if (_store case final store?) return store;
     final opening = _opening ??= _openStore();
     try {
-      return _store ??= await opening;
+      final store = await opening;
+      if (_store == null) {
+        _store = store;
+        store.afterCommit = localReminders?.refresh;
+      }
+      return store;
     } finally {
       if (identical(_opening, opening)) _opening = null;
     }
@@ -44,6 +53,19 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     deviceZoneId: _deviceZone,
     displayZoneId: profile?.preferences.calendarZoneId,
   );
+
+  @override
+  late final LocalReminders? localReminders = _notificationPlatform == null
+      ? null
+      : LocalReminders(
+          platform: _notificationPlatform,
+          openStore: _database,
+          openCalendar: () async {
+            await _refreshDeviceZone();
+            return _calendar();
+          },
+          now: _now,
+        );
   Future<ActivityCalendar> _calendar() async => ActivityCalendar(
     await _database(),
     _zones,
@@ -199,6 +221,12 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     final store = await _database();
     await store.transaction((data) async {
       final previous = (await data.profiles.all()).singleOrNull;
+      final oldPreferences = previous?.preferences;
+      final preferences = profile.preferences;
+      final backupSince =
+          preferences.backupReminderDays == oldPreferences?.backupReminderDays
+          ? oldPreferences?.backupReminderSince ?? previous?.metadata.createdAt
+          : _now().toUtc();
       await data.profiles.save(
         Profile(
           previous?.metadata ?? RecordMetadata.create(),
@@ -207,7 +235,10 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
           weekStartsOn: profile.sundayFirst ? DateTime.sunday : DateTime.monday,
           defaultBuffer: profile.defaultBuffer,
           quietHours: profile.quietHours,
-          preferences: profile.preferences,
+          preferences: preferences.copyWith(
+            backupReminderSince: backupSince,
+            disableBackupReminder: preferences.backupReminderDays == null,
+          ),
           activeHours: {
             for (final entry in profile.activeHours.entries)
               entry.key: (
