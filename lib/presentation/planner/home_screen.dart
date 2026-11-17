@@ -146,7 +146,12 @@ class _PlannerHomeState extends State<PlannerHome> {
             )
             .toList();
     final conflicted = daily.agenda
-        .where((entry) => entry.warning == ScheduleWarning.overlap)
+        .where(
+          (entry) =>
+              entry.warning == ScheduleWarning.overlap ||
+              (entry.kind == PreviewKind.session &&
+                  entry.warning == ScheduleWarning.buffer),
+        )
         .firstOrNull;
     final overdue = widget.repository.homeEntries
         .where(
@@ -194,7 +199,7 @@ class _PlannerHomeState extends State<PlannerHome> {
           PreviewNotice(
             title: '${conflicted.title} bentrok',
             message:
-                '${eventTime(conflicted)} · Ada kegiatan yang tumpang tindih.',
+                '${eventTime(conflicted)} · ${conflicted.warning == ScheduleWarning.buffer ? 'Jeda antarkegiatan terlalu pendek.' : 'Ada kegiatan yang tumpang tindih.'}',
             icon: Icons.warning_amber_rounded,
             warning: true,
           ),
@@ -255,11 +260,11 @@ class _PlannerHomeState extends State<PlannerHome> {
             ),
           )
         else ...[
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Expanded(
-                child: Text('Agenda hari ini', style: NeoType.section),
-              ),
+              const Text('Agenda hari ini', style: NeoType.section),
               TextButton(
                 onPressed: widget.onCalendar,
                 child: const Text('Lihat kalender'),

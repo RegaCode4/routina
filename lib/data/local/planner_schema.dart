@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 5;
+const plannerSchemaVersion = 6;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -356,6 +356,20 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
         due_at_us INTEGER NOT NULL,
         reached_at_us INTEGER CHECK (reached_at_us >= due_at_us)
       )
+      ''');
+  }
+  if (from < 6 && to >= 6) {
+    await db.execute(
+      'ALTER TABLE tasks ADD COLUMN remaining_actual_us INTEGER',
+    );
+    await db.execute('''
+      ALTER TABLE tasks ADD COLUMN minimum_session_minutes INTEGER
+      CHECK (minimum_session_minutes > 0)
+      ''');
+    await db.execute('''
+      ALTER TABLE tasks ADD COLUMN maximum_sessions INTEGER
+      CHECK (maximum_sessions > 0 AND
+        (maximum_sessions IS NULL) = (minimum_session_minutes IS NULL))
       ''');
   }
 }

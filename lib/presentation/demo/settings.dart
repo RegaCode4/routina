@@ -280,6 +280,45 @@ class _CalendarSettings extends StatelessWidget {
               }
             },
           ),
+          if (demo.planner.usesStoredCalendar)
+            PreviewField(
+              label: 'Batas sesi default',
+              value: profile.preferences.sessionLimits == null
+                  ? 'Belum diatur'
+                  : 'Min. ${profile.preferences.sessionLimits!.minimumMinutes} menit · '
+                        'Maks. ${profile.preferences.sessionLimits!.maximumSessions} sesi',
+              onTap: () async {
+                final previous = profile.preferences.sessionLimits;
+                final minimum = await demoNumber(
+                  context,
+                  'Durasi minimum per sesi (menit)',
+                  value: previous?.minimumMinutes,
+                );
+                if (!context.mounted || minimum == null) return;
+                final maximum = await demoNumber(
+                  context,
+                  'Jumlah maksimum sesi',
+                  value: previous?.maximumSessions,
+                  max: 5256000,
+                );
+                if (!context.mounted || maximum == null) return;
+                final saved = await saveDemoProfile(
+                  context,
+                  demo,
+                  (current) => current.copyWith(
+                    preferences: current.preferences.copyWith(
+                      sessionLimits: (
+                        minimumMinutes: minimum,
+                        maximumSessions: maximum,
+                      ),
+                    ),
+                  ),
+                );
+                if (context.mounted && saved) {
+                  demoFeedback(context, 'Batas sesi default tersimpan.');
+                }
+              },
+            ),
         ]),
       );
     },

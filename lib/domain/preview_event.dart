@@ -1,5 +1,6 @@
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/event_recurrence.dart';
+import 'package:routina/domain/scheduling_engine.dart';
 
 enum PreviewKind { activity, deadline, routine, session }
 
@@ -17,6 +18,24 @@ enum PreviewEventState {
 enum ScheduleWarning { overlap, buffer, activeHours }
 
 enum DayAvailability { timed, busy, free }
+
+class EventReplacement {
+  const EventReplacement({
+    required this.original,
+    required this.revision,
+    required this.id,
+    required this.slot,
+    required this.deviceZone,
+    required this.displayZone,
+  });
+
+  final PreviewEvent original;
+  final int revision;
+  final String id;
+  final SchedulingSlot slot;
+  final String deviceZone;
+  final String displayZone;
+}
 
 enum SeriesScope {
   occurrence('Hanya kejadian ini'),
@@ -49,6 +68,30 @@ class PreviewProfile {
     Map<String, String> categoryTimes = const {},
   }) : activeHours = Map.unmodifiable(activeHours),
        categoryTimes = Map.unmodifiable(categoryTimes);
+
+  factory PreviewProfile.fromRecord(Profile profile) => PreviewProfile(
+    name: profile.name ?? '',
+    notifications: profile.notificationsEnabled ?? false,
+    sundayFirst: profile.weekStartsOn == DateTime.sunday,
+    study: profile.activityPreferences['study'] ?? '',
+    workout: profile.activityPreferences['workout'] ?? '',
+    other: profile.activityPreferences['other'] ?? '',
+    defaultBuffer: profile.defaultBuffer,
+    quietHours: profile.quietHours,
+    preferences: profile.preferences,
+    categoryTimes: {
+      for (final entry in profile.activityPreferences.entries)
+        if (entry.key.startsWith('category:'))
+          entry.key.substring('category:'.length): entry.value,
+    },
+    activeHours: {
+      for (final entry in profile.activeHours.entries)
+        entry.key: ActiveInterval(
+          entry.value.startMinute,
+          entry.value.endMinute,
+        ),
+    },
+  );
 
   final String name;
   final Map<int, ActiveInterval> activeHours;

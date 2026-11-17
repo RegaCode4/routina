@@ -91,7 +91,12 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   @override
   Future<void> loadEarlierConfirmations() async {}
   @override
-  Future<DateTime?> suggestReplacement(PreviewEvent event) async => null;
+  Future<EventReplacement?> suggestReplacement(PreviewEvent event) async =>
+      null;
+
+  @override
+  Future<PreviewEvent> approveReplacement(EventReplacement proposal) async =>
+      throw UnsupportedError('Penjadwalan ulang memerlukan kalender lokal.');
   @override
   Future<List<PreviewEvent>> readTrashedActivities() async => events
       .where((event) => event.state == PreviewEventState.trashed)

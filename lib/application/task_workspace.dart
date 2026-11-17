@@ -1,5 +1,6 @@
 import 'package:routina/application/activity_calendar.dart';
 import 'package:routina/application/calendar_zones.dart';
+import 'package:routina/application/smart_scheduling.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
@@ -43,7 +44,6 @@ class TaskView {
 }
 
 typedef SubtaskEdit = ({Subtask? existing, String title});
-typedef WorkSlot = ({DateTime start, DateTime end});
 
 class TaskIssue implements Exception {
   const TaskIssue(this.message);
@@ -76,6 +76,12 @@ class TaskWorkspace {
   final Future<ActivityCalendar> Function() openCalendar;
   final CalendarZones Function() readZones;
   final DateTime Function() now;
+
+  SmartScheduling get scheduling => SmartScheduling(
+    openStore: openStore,
+    openCalendar: openCalendar,
+    now: now,
+  );
 
   CalendarZones get zones => readZones();
   DateTime get today => civilDate(zones.wall(now(), zones.displayId));
@@ -237,8 +243,16 @@ class TaskWorkspace {
         priority: priority,
         initialEstimate: estimate,
         status: previous?.status ?? ActivityStatus.planned,
-        confirmedRemainingEstimate: previous?.confirmedRemainingEstimate,
-        remainingConfirmedAt: previous?.remainingConfirmedAt,
+        confirmedRemainingEstimate: previous?.initialEstimate == estimate
+            ? previous?.confirmedRemainingEstimate
+            : null,
+        remainingConfirmedAt: previous?.initialEstimate == estimate
+            ? previous?.remainingConfirmedAt
+            : null,
+        remainingActualAtConfirmation: previous?.initialEstimate == estimate
+            ? previous?.remainingActualAtConfirmation
+            : null,
+        sessionLimits: previous?.sessionLimits,
       ),
     );
     final submittedIds = <String>{};
@@ -402,14 +416,6 @@ class TaskWorkspace {
     );
   });
 
-  Future<WorkSlot?> suggest(Task task, Duration duration) async {
-    final deadline = deadlineInstant(task);
-    if (deadline == null || task.status == ActivityStatus.completed) {
-      return null;
-    }
-    return (await openCalendar()).suggestWorkSlot(duration, deadline);
-  }
-
   Future<WorkSession> saveSession(
     String taskId,
     DateTime start,
@@ -490,6 +496,31 @@ class TaskWorkspace {
         );
       });
 
+  Future<void> logSessionTime(WorkSession previous, Duration duration) async =>
+      (await openStore()).transaction((data) async {
+        final row = await data.workSessions.find(previous.id);
+        if (row == null ||
+            row.metadata.revision != previous.metadata.revision) {
+          throw StaleRecord(previous.id);
+        }
+        final current = now().toUtc();
+        if (duration <= Duration.zero ||
+            (row.status != ActivityStatus.planned &&
+                row.status != ActivityStatus.completed) ||
+            effectiveSession(row).end.instant.isAfter(current)) {
+          throw const TaskIssue('Catat durasi positif setelah sesi berakhir.');
+        }
+        await data.timeLogs.save(
+          TimeLog(
+            RecordMetadata.create(),
+            target: (kind: RecordKind.workSession, id: row.id),
+            actualDuration: duration,
+            recordedAt: current,
+            source: TimeLogSource.manual,
+          ),
+        );
+      });
+
   Future<void> _requireMovableSession(
     PlannerData data,
     String taskId,
@@ -532,6 +563,8 @@ Task _copyTask(Task task, {ZonedTime? deadline, ActivityStatus? status}) =>
       initialEstimate: task.initialEstimate,
       confirmedRemainingEstimate: task.confirmedRemainingEstimate,
       remainingConfirmedAt: task.remainingConfirmedAt,
+      remainingActualAtConfirmation: task.remainingActualAtConfirmation,
+      sessionLimits: task.sessionLimits,
     );
 
 WorkSession _copySession(

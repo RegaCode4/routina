@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
+import 'package:routina/application/smart_scheduling.dart';
 import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -13,6 +14,7 @@ import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 import 'package:routina/presentation/tasks/session_editor.dart';
+import 'package:routina/presentation/tasks/smart_schedule_page.dart';
 import 'package:routina/presentation/tasks/task_editor.dart';
 
 class TaskDetail extends StatefulWidget {
@@ -37,7 +39,7 @@ class TaskDetail extends StatefulWidget {
 
 class _TaskDetailState extends State<TaskDetail> {
   TaskWorkspace get _workspace => widget.workspace;
-  late Future<TaskView?> _read = _workspace.read(widget.id);
+  late Future<(TaskView?, SchedulingReview?)> _read = _load();
   bool _busy = false;
   Timer? _clock;
   AppLifecycleListener? _lifecycle;
@@ -57,10 +59,18 @@ class _TaskDetailState extends State<TaskDetail> {
   }
 
   void _reload() {
-    final pending = _workspace.read(widget.id);
+    final pending = _load();
     setState(() {
       _read = pending;
     });
+  }
+
+  Future<(TaskView?, SchedulingReview?)> _load() async {
+    final view = await _workspace.read(widget.id);
+    final review = view == null || view.completed
+        ? null
+        : await _workspace.scheduling.review(widget.id);
+    return (view, review);
   }
 
   Future<void> _change(
@@ -174,19 +184,10 @@ class _TaskDetailState extends State<TaskDetail> {
     }
   }
 
-  Future<void> _session(
-    TaskView view, {
-    WorkSession? existing,
-    WorkSlot? proposal,
-  }) async {
+  Future<void> _session(TaskView view, {WorkSession? existing}) async {
     final saved = await openDemo<WorkSession>(
       context,
-      SessionEditor(
-        workspace: _workspace,
-        task: view,
-        previous: existing,
-        proposal: proposal,
-      ),
+      SessionEditor(workspace: _workspace, task: view, previous: existing),
     );
     if (mounted && saved != null) {
       widget.onChanged();
@@ -194,47 +195,19 @@ class _TaskDetailState extends State<TaskDetail> {
     }
   }
 
-  Future<void> _findSlot(TaskView view) async {
-    final estimate =
-        view.task.confirmedRemainingEstimate ?? view.task.initialEstimate;
-    final minutes = await demoNumber(
+  Future<void> _schedule(TaskView view, SchedulingPage entry) async {
+    await openDemo<void>(
       context,
-      'Durasi sesi (menit)',
-      value:
-          estimate == null ||
-              estimate.inMinutes < 1 ||
-              estimate.inMinutes > 1440
-          ? null
-          : estimate.inMinutes,
+      SmartSchedulePage(
+        scheduling: _workspace.scheduling,
+        taskId: view.task.id,
+        entry: entry,
+        onManual: (session) => _session(view, existing: session),
+      ),
     );
-    if (!mounted || minutes == null) return;
-    setState(() => _busy = true);
-    WorkSlot? proposal;
-    try {
-      proposal = await _workspace.suggest(
-        view.task,
-        Duration(minutes: minutes),
-      );
-    } catch (_) {
-      if (mounted) {
-        demoFeedback(context, 'Slot belum dapat diperiksa. Coba lagi.');
-      }
-      return;
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
     if (!mounted) return;
-    if (proposal == null) {
-      await showNeoDialog(
-        context,
-        title: 'Slot belum ditemukan',
-        message:
-            'Tidak ada slot yang sesuai sebelum tenggat dalam tujuh hari ke depan.',
-        confirmLabel: 'Tutup',
-      );
-      return;
-    }
-    await _session(view, proposal: proposal);
+    widget.onChanged();
+    _reload();
   }
 
   Future<void> _sessionMenu(TaskView view, WorkSession row) async {
@@ -242,14 +215,25 @@ class _TaskDetailState extends State<TaskDetail> {
     final held =
         row.status == ActivityStatus.planned &&
         !_workspace.effectiveSession(row).end.instant.isAfter(_workspace.now());
-    if (!movable && !held) return;
+    final canLog = held || row.status == ActivityStatus.completed;
+    if (!movable && !canLog) return;
     final action = await previewChoices(context, 'Tindakan sesi', [
       if (movable) ...['Pindah sesi', 'Batalkan sesi'],
       if (held) 'Tandai sesi terlaksana',
+      if (canLog) 'Catat durasi aktual',
     ], (value) => value);
     if (!mounted || action == null) return;
     if (action == 'Pindah sesi') {
       await _session(view, existing: row);
+      return;
+    }
+    if (action == 'Catat durasi aktual') {
+      final minutes = await demoNumber(context, 'Durasi aktual (menit)');
+      if (mounted && minutes != null) {
+        await _change(
+          () => _workspace.logSessionTime(row, Duration(minutes: minutes)),
+        );
+      }
       return;
     }
     final cancel = action == 'Batalkan sesi';
@@ -271,10 +255,12 @@ class _TaskDetailState extends State<TaskDetail> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<TaskView?>(
+  Widget build(
+    BuildContext context,
+  ) => FutureBuilder<(TaskView?, SchedulingReview?)>(
     future: _read,
     builder: (context, snapshot) {
-      final view = snapshot.data;
+      final (view, scheduling) = snapshot.data ?? (null, null);
       if (view == null || snapshot.hasError) {
         final loading = snapshot.connectionState == ConnectionState.waiting;
         return PreviewPage(
@@ -316,9 +302,9 @@ class _TaskDetailState extends State<TaskDetail> {
             : DemoActions([
                 NeoButton(
                   label: 'Cari slot',
-                  onPressed: _busy || view.deadline == null
+                  onPressed: _busy
                       ? null
-                      : () => _findSlot(view),
+                      : () => _schedule(view, SchedulingPage.setup),
                 ),
                 NeoButton(
                   label: 'Tandai Tugas Selesai',
@@ -428,9 +414,42 @@ class _TaskDetailState extends State<TaskDetail> {
             ),
             (
               'Estimasi sisa disetujui',
-              _minutes(task.confirmedRemainingEstimate),
+              _minutes(scheduling?.confirmedRemaining),
             ),
           ]),
+          if (scheduling != null && scheduling.conflicts.isNotEmpty)
+            PreviewNotice(
+              title: '${scheduling.conflicts.length} sesi bentrok',
+              message:
+                  'Tinjau sesi terdampak dan pilih cakupan penjadwalan ulang.',
+              warning: true,
+              button: NeoButton(
+                label: 'Tinjau konflik',
+                onPressed: _busy
+                    ? null
+                    : () => _schedule(view, SchedulingPage.conflict),
+              ),
+            ),
+          if (scheduling case final state?
+              when state.actual > Duration.zero ||
+                  state.upcoming.isNotEmpty ||
+                  state.confirmedRemaining != null)
+            PreviewNotice(
+              title: state.confirmedRemaining == null
+                  ? 'Tinjau estimasi sisa'
+                  : scheduleMismatch(
+                      state.confirmedRemaining! - state.scheduled,
+                    ),
+              message: state.confirmedRemaining == null
+                  ? 'Konfirmasi estimasi sisa untuk membandingkan alokasi sesi.'
+                  : 'Total sesi mendatang ${scheduleDuration(state.scheduled)}.',
+              button: NeoButton(
+                label: 'Bandingkan alokasi',
+                onPressed: _busy
+                    ? null
+                    : () => _schedule(view, SchedulingPage.comparison),
+              ),
+            ),
           if (view.sessions.isEmpty) const Text('Belum ada sesi pengerjaan.'),
           if (view.sessions.any((row) => row.id == widget.initialSessionId))
             _sessionCard(
@@ -439,9 +458,17 @@ class _TaskDetailState extends State<TaskDetail> {
                 (row) => row.id == widget.initialSessionId,
               ),
               selected: true,
+              conflicted:
+                  scheduling?.conflicts.containsKey(widget.initialSessionId) ??
+                  false,
             ),
           for (final row in view.sessions)
-            if (row.id != widget.initialSessionId) _sessionCard(view, row),
+            if (row.id != widget.initialSessionId)
+              _sessionCard(
+                view,
+                row,
+                conflicted: scheduling?.conflicts.containsKey(row.id) ?? false,
+              ),
           if (!view.completed)
             NeoButton(
               label: 'Tambah sesi manual',
@@ -453,7 +480,12 @@ class _TaskDetailState extends State<TaskDetail> {
     },
   );
 
-  Widget _sessionCard(TaskView view, WorkSession row, {bool selected = false}) {
+  Widget _sessionCard(
+    TaskView view,
+    WorkSession row, {
+    bool selected = false,
+    bool conflicted = false,
+  }) {
     final schedule = _workspace.effectiveSession(row);
     final zone = _workspace.zones;
     final start = zone.wall(schedule.start.instant, zone.displayId);
@@ -474,18 +506,25 @@ class _TaskDetailState extends State<TaskDetail> {
             : 'Sesi berlangsung',
     };
     return NeoCard(
-      tone: selected ? NeoCardTone.selected : NeoCardTone.plain,
+      tone: conflicted
+          ? NeoCardTone.warning
+          : selected
+          ? NeoCardTone.selected
+          : NeoCardTone.plain,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(status, style: NeoType.item),
+          if (conflicted) const StatusBadge(status: NeoStatus.conflicted),
           Text(
             '${taskTime(start)} – ${dateOnly(start) == dateOnly(end) ? clockLabel(minutesAt(end)) : taskTime(end)}',
           ),
           Text('Durasi terjadwal · ${_minutes(schedule.duration)}'),
           for (final log in view.logs.where((log) => log.target.id == row.id))
             Text('Catatan aktual · ${_minutes(log.actualDuration)}'),
-          if (move || (row.status == ActivityStatus.planned && elapsed))
+          if (move ||
+              (row.status == ActivityStatus.planned && elapsed) ||
+              row.status == ActivityStatus.completed)
             TextButton(
               onPressed: _busy ? null : () => _sessionMenu(view, row),
               child: const Text('Tindakan sesi'),

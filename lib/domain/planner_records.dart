@@ -120,6 +120,8 @@ class ScheduledInterval {
 
 typedef DailyHours = ({int startMinute, int endMinute});
 
+typedef SessionLimits = ({int minimumMinutes, int maximumSessions});
+
 enum ReminderKind { event, deadline, workSession, routine }
 
 class PlannerPreferences {
@@ -133,6 +135,7 @@ class PlannerPreferences {
     this.quietExceptions = const {},
     this.quietExceptionsEnabled = false,
     this.backupReminderDays,
+    this.sessionLimits,
   });
 
   final String? calendarZoneId;
@@ -144,6 +147,7 @@ class PlannerPreferences {
   final Set<ReminderKind> quietExceptions;
   final bool quietExceptionsEnabled;
   final int? backupReminderDays;
+  final SessionLimits? sessionLimits;
 
   PlannerPreferences copyWith({
     String? calendarZoneId,
@@ -157,6 +161,7 @@ class PlannerPreferences {
     bool? quietExceptionsEnabled,
     int? backupReminderDays,
     bool disableBackupReminder = false,
+    SessionLimits? sessionLimits,
   }) => PlannerPreferences(
     calendarZoneId: useDeviceZone
         ? null
@@ -172,6 +177,7 @@ class PlannerPreferences {
     backupReminderDays: disableBackupReminder
         ? null
         : backupReminderDays ?? this.backupReminderDays,
+    sessionLimits: sessionLimits ?? this.sessionLimits,
   );
 }
 
@@ -306,6 +312,8 @@ class Task extends PlannerRecord {
     this.initialEstimate,
     this.confirmedRemainingEstimate,
     this.remainingConfirmedAt,
+    this.remainingActualAtConfirmation,
+    this.sessionLimits,
   });
 
   final String title;
@@ -317,6 +325,8 @@ class Task extends PlannerRecord {
   final Duration? initialEstimate;
   final Duration? confirmedRemainingEstimate;
   final DateTime? remainingConfirmedAt;
+  final Duration? remainingActualAtConfirmation;
+  final SessionLimits? sessionLimits;
 }
 
 class Subtask extends PlannerRecord {

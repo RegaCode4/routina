@@ -152,6 +152,11 @@ final _profile = _Table<Profile>(
   ),
 );
 
+SessionLimits? _sessionLimits(int? minimum, int? maximum) =>
+    minimum == null || maximum == null
+    ? null
+    : (minimumMinutes: minimum, maximumSessions: maximum);
+
 String _writePreferences(PlannerPreferences value) => jsonEncode({
   'calendarZoneId': value.calendarZoneId,
   'eventTimeMode': value.eventTimeMode.name,
@@ -165,6 +170,8 @@ String _writePreferences(PlannerPreferences value) => jsonEncode({
   'quietExceptions': value.quietExceptions.map((kind) => kind.name).toList(),
   'quietExceptionsEnabled': value.quietExceptionsEnabled,
   'backupReminderDays': value.backupReminderDays,
+  'minimumSessionMinutes': value.sessionLimits?.minimumMinutes,
+  'maximumSessions': value.sessionLimits?.maximumSessions,
 });
 
 PlannerPreferences _readPreferences(String source) {
@@ -177,6 +184,10 @@ PlannerPreferences _readPreferences(String source) {
   final quietExceptions =
       values['quietExceptions'] as List<dynamic>? ?? const [];
   return PlannerPreferences(
+    sessionLimits: _sessionLimits(
+      values['minimumSessionMinutes'] as int?,
+      values['maximumSessions'] as int?,
+    ),
     calendarZoneId: values['calendarZoneId'] as String?,
     eventTimeMode: mode('eventTimeMode', TimeMode.originalZone),
     routineTimeMode: mode('routineTimeMode', TimeMode.localWallTime),
@@ -307,6 +318,9 @@ final _task = _Table<Task>(
     'status': value.status.name,
     'initial_estimate_us': value.initialEstimate?.inMicroseconds,
     'confirmed_remaining_us': value.confirmedRemainingEstimate?.inMicroseconds,
+    'remaining_actual_us': value.remainingActualAtConfirmation?.inMicroseconds,
+    'minimum_session_minutes': value.sessionLimits?.minimumMinutes,
+    'maximum_sessions': value.sessionLimits?.maximumSessions,
     'remaining_confirmed_at_us': _instant(value.remainingConfirmedAt),
     'deadline_us': _instant(value.deadline?.instant),
     'deadline_zone': value.deadline?.zoneId,
@@ -322,6 +336,11 @@ final _task = _Table<Task>(
     status: row.status,
     initialEstimate: row.duration('initial_estimate_us'),
     confirmedRemainingEstimate: row.duration('confirmed_remaining_us'),
+    remainingActualAtConfirmation: row.duration('remaining_actual_us'),
+    sessionLimits: _sessionLimits(
+      row.optionalNumber('minimum_session_minutes'),
+      row.optionalNumber('maximum_sessions'),
+    ),
     remainingConfirmedAt: row.optionalInstant('remaining_confirmed_at_us'),
     deadline: row['deadline_us'] == null
         ? null

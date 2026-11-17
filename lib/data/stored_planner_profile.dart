@@ -120,8 +120,17 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   }) async => (await _calendar()).change(event, state, scope: scope);
 
   @override
-  Future<DateTime?> suggestReplacement(PreviewEvent event) async =>
-      (await _calendar()).suggestReplacement(event);
+  Future<EventReplacement?> suggestReplacement(PreviewEvent event) async {
+    await _refreshDeviceZone();
+    return (await _calendar()).suggestReplacement(event);
+  }
+
+  @override
+  Future<PreviewEvent> approveReplacement(EventReplacement proposal) async {
+    await _refreshDeviceZone();
+    return (await _calendar()).approveReplacement(proposal);
+  }
+
   @override
   Future<List<PreviewEvent>> readTrashedActivities() async =>
       (await _calendar()).trash();
@@ -151,31 +160,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
       _savedCategories = await store.categories.all();
       await super.rememberStep(record?.onboardingStep ?? 0);
       if (record != null && record.onboardingCompleted) {
-        await super.saveProfile(
-          PreviewProfile(
-            name: record.name ?? '',
-            notifications: record.notificationsEnabled ?? false,
-            sundayFirst: record.weekStartsOn == DateTime.sunday,
-            study: record.activityPreferences['study'] ?? '',
-            workout: record.activityPreferences['workout'] ?? '',
-            other: record.activityPreferences['other'] ?? '',
-            defaultBuffer: record.defaultBuffer,
-            quietHours: record.quietHours,
-            preferences: record.preferences,
-            categoryTimes: {
-              for (final entry in record.activityPreferences.entries)
-                if (entry.key.startsWith('category:'))
-                  entry.key.substring('category:'.length): entry.value,
-            },
-            activeHours: {
-              for (final entry in record.activeHours.entries)
-                entry.key: ActiveInterval(
-                  entry.value.startMinute,
-                  entry.value.endMinute,
-                ),
-            },
-          ),
-        );
+        await super.saveProfile(PreviewProfile.fromRecord(record));
       }
     }
     if (surface == PreviewSurface.home) {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:routina/application/planner_preview.dart';
-import 'package:routina/domain/planner_records.dart';
+import 'package:routina/application/calendar_zones.dart';
+import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -90,41 +91,32 @@ class _EventDetailState extends State<EventDetail> {
     }
     setState(() => _busy = true);
     try {
-      final start = await widget.repository.suggestReplacement(event);
+      final proposal = await widget.repository.suggestReplacement(event);
       if (!mounted) return;
-      if (start == null) {
+      if (proposal == null) {
         _feedback(
           'Belum ada slot pengganti dalam tujuh hari. Pilih tanggal manual.',
         );
         return;
       }
-      final end = start.add(event.end.difference(event.start));
+      final zones = CalendarZones(
+        deviceZoneId: proposal.deviceZone,
+        displayZoneId: proposal.displayZone,
+      );
+      final start = zones.wall(proposal.slot.start, proposal.displayZone);
+      final end = zones.wall(proposal.slot.end, proposal.displayZone);
       final accepted = await showNeoDialog(
         context,
         title: 'Tinjau slot pengganti',
         message:
             '${dateLabel(start)} · ${clockLabel(minutesAt(start))}–${clockLabel(minutesAt(end))}',
-        confirmLabel: 'Buka formulir pengganti',
+        confirmLabel: 'Setujui & Simpan',
       );
       if (!mounted || accepted != true) return;
-      final draft = _replacementDraft(event)
-        ..timeMode = TimeMode.originalZone
-        ..zoneId = widget.repository.calendarZoneLabel
-        ..date = dateOnly(start)
-        ..endDate = dateOnly(end)
-        ..start = minutesAt(start)
-        ..end = minutesAt(end);
-      final saved = await Navigator.of(context).push<PreviewEvent>(
-        MaterialPageRoute(
-          builder: (_) => EventEditor(
-            repository: widget.repository,
-            draft: draft,
-            full: true,
-            categories: widget.categories,
-          ),
-        ),
-      );
-      if (mounted && saved != null) _feedback('Jadwal pengganti tersimpan.');
+      await widget.repository.approveReplacement(proposal);
+      if (mounted) _feedback('Jadwal pengganti tersimpan.');
+    } on StaleRecord {
+      if (mounted) _feedback('Kalender berubah. Cari slot pengganti lagi.');
     } catch (_) {
       if (mounted) _feedback('Slot pengganti belum dapat dibaca.');
     } finally {

@@ -4,6 +4,7 @@ import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/domain/scheduling_engine.dart';
 import 'package:routina/presentation/demo/demo_widgets.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
@@ -15,20 +16,18 @@ class SessionEditor extends StatefulWidget {
     required this.workspace,
     required this.task,
     this.previous,
-    this.proposal,
     super.key,
   });
   final TaskWorkspace workspace;
   final TaskView task;
   final WorkSession? previous;
-  final WorkSlot? proposal;
   @override
   State<SessionEditor> createState() => _SessionEditorState();
 }
 
 class _SessionEditorState extends State<SessionEditor> {
   TaskWorkspace get _workspace => widget.workspace;
-  late final WorkSlot? _initial = widget.proposal ?? _readInitial();
+  late final SchedulingSlot? _initial = _readInitial();
   late DateTime? _day = _initial == null ? null : dateOnly(_initial.start);
   late DateTime? _endDay =
       _initial == null || dateOnly(_initial.start) == dateOnly(_initial.end)
@@ -39,7 +38,7 @@ class _SessionEditorState extends State<SessionEditor> {
   bool _busy = false;
   String? _error;
 
-  WorkSlot? _readInitial() {
+  SchedulingSlot? _readInitial() {
     final session = widget.previous;
     if (session == null) return null;
     final schedule = _workspace.effectiveSession(session);
@@ -84,11 +83,6 @@ class _SessionEditorState extends State<SessionEditor> {
     if (_busy || _day == null || _start == null || _end == null) return;
     final start = civilDate(_day!).add(Duration(minutes: _start!));
     final end = civilDate(_endDay ?? _day!).add(Duration(minutes: _end!));
-    final proposal = widget.proposal;
-    final isProposal =
-        proposal != null &&
-        start == civilTime(proposal.start) &&
-        end == civilTime(proposal.end);
     setState(() {
       _busy = true;
       _error = null;
@@ -108,13 +102,6 @@ class _SessionEditorState extends State<SessionEditor> {
           return;
         } on SessionWarnings catch (warnings) {
           if (!mounted) return;
-          if (isProposal) {
-            setState(
-              () => _error =
-                  'Slot berubah. Pilih waktu lain atau cari ulang slot.',
-            );
-            return;
-          }
           final consent = await showNeoDialog(
             context,
             title: 'Simpan sesi dengan peringatan?',
@@ -149,11 +136,7 @@ class _SessionEditorState extends State<SessionEditor> {
 
   @override
   Widget build(BuildContext context) => PreviewPage(
-    title: widget.proposal != null
-        ? 'Tinjau slot'
-        : widget.previous == null
-        ? 'Tambah sesi manual'
-        : 'Pindah sesi',
+    title: widget.previous == null ? 'Tambah sesi manual' : 'Pindah sesi',
     footer: NeoButton(
       label: 'Simpan sesi',
       loading: _busy,

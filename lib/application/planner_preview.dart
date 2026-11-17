@@ -47,7 +47,8 @@ abstract interface class PlannerPreviewRepository {
     PreviewEventState state, {
     SeriesScope? scope,
   });
-  Future<DateTime?> suggestReplacement(PreviewEvent event);
+  Future<EventReplacement?> suggestReplacement(PreviewEvent event);
+  Future<PreviewEvent> approveReplacement(EventReplacement proposal);
   Future<List<PreviewEvent>> readTrashedActivities();
   PreviewEvent saveEvent(PreviewEvent event, {SeriesScope? scope});
   void setEventState(String id, PreviewEventState state, {SeriesScope? scope});

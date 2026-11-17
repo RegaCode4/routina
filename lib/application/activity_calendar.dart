@@ -7,6 +7,7 @@ import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/domain/scheduling_engine.dart';
 
 class ActivityCalendar {
   ActivityCalendar(
@@ -37,8 +38,54 @@ class ActivityCalendar {
       civilTime(until),
     );
     final current = now().toUtc();
+    final futureSessions = source.where(
+      (row) =>
+          row.other?.kind == CalendarEntryKind.workSession &&
+          row.other?.status == ActivityStatus.planned &&
+          row.start.isAfter(current),
+    );
+    final conflicts = <String, ScheduleWarning>{};
+    if (futureSessions.isNotEmpty) {
+      final first = futureSessions
+          .map((row) => row.start)
+          .reduce((a, b) => a.isBefore(b) ? a : b);
+      final last = futureSessions
+          .map((row) => row.end)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final busy = await _paddedEntries(
+        store,
+        snapshot,
+        first,
+        last,
+        Duration.zero,
+      );
+      for (final row in futureSessions) {
+        final slot = (start: row.start, end: row.end);
+        for (final entry in busy.where(
+          (entry) => entry.blocks && entry.id != row.id,
+        )) {
+          if (overlapsSlot(slot, (start: entry.start, end: entry.end))) {
+            conflicts[row.id] = ScheduleWarning.overlap;
+            break;
+          }
+          if (overlapsSlot(
+            slot,
+            bufferedSlot(entry.busy, before: row.before, after: row.after),
+          )) {
+            conflicts[row.id] = ScheduleWarning.buffer;
+          }
+        }
+      }
+    }
     final visible = source
-        .map((entry) => _present(entry, snapshot.series, current))
+        .map(
+          (entry) => _present(
+            entry,
+            snapshot.series,
+            current,
+            warningOverride: conflicts[entry.id],
+          ),
+        )
         .toList();
     visible.sort((a, b) {
       final start = a.start.compareTo(b.start);
@@ -200,35 +247,188 @@ class ActivityCalendar {
     return _present(_project(saved), snapshot.series, current);
   });
 
-  Future<DateTime?> suggestReplacement(PreviewEvent original) async {
-    if (original.allDay) return null;
-    final duration = civilTime(
-      original.end,
-    ).difference(civilTime(original.start));
-    final global = profile?.defaultBuffer?.inMinutes ?? 0;
-    final slot = await _findSlot(
-      duration,
-      beforeBuffer: original.options.before == 0
-          ? global
-          : original.options.before,
-      afterBuffer: original.options.after == 0
-          ? global
-          : original.options.after,
+  Future<ActivityCalendar> withLatestProfile(PlannerData data) async {
+    final settings = (await data.profiles.all()).singleOrNull;
+    if (settings == null) return this;
+    return ActivityCalendar(
+      store,
+      CalendarZones(
+        deviceZoneId: zones.deviceId,
+        displayZoneId: settings.preferences.calendarZoneId,
+      ),
+      profile: PreviewProfile.fromRecord(settings),
+      categories: await data.categories.all(),
+      now: now,
     );
-    return slot?.start;
   }
 
-  Future<({DateTime start, DateTime end})?> suggestWorkSlot(
-    Duration duration,
-    DateTime deadline,
-  ) {
-    final buffer = profile?.defaultBuffer?.inMinutes ?? 0;
-    return _findSlot(
-      duration,
-      beforeBuffer: buffer,
-      afterBuffer: buffer,
-      deadline: deadline,
+  Map<int, DailyHours> get schedulingHours => {
+    for (final e
+        in (profile?.activeHours ?? const <int, ActiveInterval>{}).entries)
+      e.key: (startMinute: e.value.start, endMinute: e.value.end),
+  };
+
+  String schedulingPreference(String? categoryId) {
+    final settings = profile;
+    if (settings == null) return '';
+    if (settings.categoryTimes[categoryId] case final preference?) {
+      return preference;
+    }
+    final name = categories
+        .where((row) => row.id == categoryId)
+        .firstOrNull
+        ?.name;
+    return switch (name?.trim().toLowerCase()) {
+      'belajar' => settings.study,
+      'workout' || 'olahraga' => settings.workout,
+      _ => settings.other,
+    };
+  }
+
+  Future<EventReplacement?> suggestReplacement(
+    PreviewEvent original,
+  ) => store.transaction((data) async {
+    final calendar = await withLatestProfile(data);
+    final event = await _replacementSource(data, original.id);
+    final duration = event.schedule.duration;
+    final current = now().toUtc();
+    final day = civilDate(
+      calendar.zones.wall(current, calendar.zones.deviceId),
     );
+    final period = (
+      start: nextSchedulingMinute(current),
+      end: calendar.zones.instant(
+        day.add(const Duration(days: 7)),
+        calendar.zones.deviceId,
+      ),
+    );
+    final hours = calendar.schedulingHours;
+    final before =
+        event.bufferBefore ?? calendar.profile?.defaultBuffer ?? Duration.zero;
+    final after =
+        event.bufferAfter ?? calendar.profile?.defaultBuffer ?? Duration.zero;
+    final result = findWorkSlots(
+      active: schedulingWindows(calendar.zones, hours, period),
+      busy: await calendar.busyIntervals(
+        data,
+        period.start,
+        period.end,
+        sessionBuffer: before > after ? before : after,
+      ),
+      duration: duration,
+      minimum: duration,
+      maximum: 1,
+      before: before,
+      after: after,
+      preferred: preferredSchedulingWindows(
+        calendar.zones,
+        hours,
+        calendar.schedulingPreference(event.categoryId),
+        period,
+      ),
+    );
+    if (result.slots.isEmpty) return null;
+    return EventReplacement(
+      original: original,
+      revision: event.metadata.revision,
+      id: RecordMetadata.create().id,
+      slot: result.slots.single,
+      deviceZone: calendar.zones.deviceId,
+      displayZone: calendar.zones.displayId,
+    );
+  });
+
+  Future<PreviewEvent> approveReplacement(
+    EventReplacement proposal,
+  ) => store.transaction((data) async {
+    final calendar = await withLatestProfile(data);
+    final event = await _replacementSource(data, proposal.original.id);
+    final slot = proposal.slot;
+    if (proposal.revision != event.metadata.revision ||
+        proposal.deviceZone != calendar.zones.deviceId ||
+        proposal.displayZone != calendar.zones.displayId ||
+        slotDuration(slot) != event.schedule.duration ||
+        !slot.start.isAfter(now())) {
+      throw StaleRecord(event.id);
+    }
+    final day = civilDate(calendar.zones.wall(now(), calendar.zones.deviceId));
+    final period = (
+      start: nextSchedulingMinute(now().toUtc()),
+      end: calendar.zones.instant(
+        day.add(const Duration(days: 7)),
+        calendar.zones.deviceId,
+      ),
+    );
+    final before =
+        event.bufferBefore ?? calendar.profile?.defaultBuffer ?? Duration.zero;
+    final after =
+        event.bufferAfter ?? calendar.profile?.defaultBuffer ?? Duration.zero;
+    final busy = await calendar.busyIntervals(
+      data,
+      slot.start,
+      slot.end,
+      sessionBuffer: before > after ? before : after,
+    );
+    if (!schedulingWindows(
+          calendar.zones,
+          calendar.schedulingHours,
+          period,
+        ).any((window) => containsSlot(window, slot)) ||
+        busy.any(
+          (row) => overlapsSlot(
+            slot,
+            bufferedSlot(row, before: before, after: after),
+          ),
+        )) {
+      throw StaleRecord(event.id);
+    }
+    final replacement = await data.events.save(
+      EventOccurrence(
+        RecordMetadata(id: proposal.id),
+        title: event.title,
+        schedule: ScheduledInterval(
+          ZonedTime(
+            instant: slot.start,
+            zoneId: calendar.zones.displayId,
+            mode: TimeMode.originalZone,
+          ),
+          ZonedTime(
+            instant: slot.end,
+            zoneId: calendar.zones.displayId,
+            mode: TimeMode.originalZone,
+          ),
+        ),
+        categoryId: event.categoryId,
+        description: event.description,
+        supersedesId: event.id,
+        bufferBefore: before,
+        bufferAfter: after,
+        details: EventDetails(
+          location: event.details.location,
+          note: event.details.note,
+          link: event.details.link,
+          color: event.details.color,
+          reminders: event.details.reminders,
+        ),
+      ),
+    );
+    final current = now().toUtc();
+    if (!slot.start.isAfter(current)) throw StaleRecord(event.id);
+    return calendar._present(calendar._project(replacement), const {}, current);
+  });
+
+  Future<EventOccurrence> _replacementSource(
+    PlannerData data,
+    String id,
+  ) async {
+    final event = await data.events.find(id);
+    if (event == null ||
+        event.availability != EventAvailability.timed ||
+        (event.status != ActivityStatus.postponed &&
+            event.status != ActivityStatus.skipped)) {
+      throw StaleRecord(id);
+    }
+    return event;
   }
 
   Future<Set<ScheduleWarning>> intervalWarnings(
@@ -238,7 +438,7 @@ class ActivityCalendar {
   }) async {
     final start = schedule.start.instant;
     final end = schedule.end.instant;
-    final buffer = profile?.defaultBuffer?.inMinutes ?? 0;
+    final buffer = profile?.defaultBuffer ?? Duration.zero;
     final snapshot = await _snapshot(data);
     final entries = await _paddedEntries(data, snapshot, start, end, buffer);
     return _warningsFor(
@@ -252,66 +452,6 @@ class ActivityCalendar {
       ),
       entries.where((entry) => entry.id != excludeId),
     );
-  }
-
-  Future<({DateTime start, DateTime end})?> _findSlot(
-    Duration duration, {
-    required int beforeBuffer,
-    required int afterBuffer,
-    DateTime? deadline,
-  }) async {
-    final current = now().toUtc();
-    if (duration <= Duration.zero ||
-        (deadline != null && !deadline.isAfter(current))) {
-      return null;
-    }
-    final snapshot = await _snapshot(store);
-    final wallNow = zones.wall(current, zones.deviceId);
-    final startDay = civilDate(wallNow);
-    final endDay = startDay.add(const Duration(days: 8));
-    final entries = await _paddedEntries(
-      store,
-      snapshot,
-      zones.instant(startDay, zones.deviceId),
-      zones.instant(endDay, zones.deviceId),
-      math.max(beforeBuffer, afterBuffer),
-    );
-    for (var i = 0; i < 7; i++) {
-      final day = startDay.add(Duration(days: i));
-      final hours =
-          profile?.activeHours[day.weekday] ??
-          (deadline == null ? null : const ActiveInterval(0, 1440));
-      if (hours == null) continue;
-      for (var minute = hours.start; minute < hours.end; minute += 15) {
-        final start = day.add(Duration(minutes: minute));
-        final end = start.add(duration);
-        if (end.isAfter(day.add(Duration(minutes: hours.end)))) break;
-        final from = zones.instant(start, zones.deviceId);
-        final to = from.add(duration);
-        if (deadline != null && to.isAfter(deadline)) return null;
-        if (zones
-            .wall(to, zones.deviceId)
-            .isAfter(day.add(Duration(minutes: hours.end)))) {
-          continue;
-        }
-        if (!from.isAfter(current) || !from.isBefore(to)) continue;
-        final candidate = _Entry(
-          start: from,
-          end: to,
-          title: '',
-          id: '',
-          before: beforeBuffer,
-          after: afterBuffer,
-        );
-        if (_warningsFor(candidate, entries).isEmpty) {
-          return (
-            start: zones.wall(from, zones.displayId),
-            end: zones.wall(to, zones.displayId),
-          );
-        }
-      }
-    }
-    return null;
   }
 
   Future<_Snapshot> _snapshot(PlannerData data) async {
@@ -329,10 +469,11 @@ class ActivityCalendar {
     PlannerData data,
     _Snapshot snapshot,
     DateTime from,
-    DateTime until,
-  ) async {
-    final utcStart = zones.instant(from, zones.displayId);
-    final utcEnd = zones.instant(until, zones.displayId);
+    DateTime until, {
+    bool instants = false,
+  }) async {
+    final utcStart = instants ? from : zones.instant(from, zones.displayId);
+    final utcEnd = instants ? until : zones.instant(until, zones.displayId);
     bool overlaps(_Entry event) =>
         event.start.isBefore(utcEnd) && event.end.isAfter(utcStart);
 
@@ -414,9 +555,11 @@ class ActivityCalendar {
           schedule?.end.instant ??
           entry.end ??
           start.add(const Duration(microseconds: 1));
-      final buffer = entry.kind == CalendarEntryKind.workSession
-          ? profile?.defaultBuffer?.inMinutes ?? 0
-          : 0;
+      final buffer =
+          entry.kind == CalendarEntryKind.workSession ||
+              entry.kind == CalendarEntryKind.routine
+          ? profile?.defaultBuffer ?? Duration.zero
+          : Duration.zero;
       final projected = _Entry(
         start: start,
         end: end,
@@ -671,9 +814,11 @@ class ActivityCalendar {
       snapshot,
       start,
       end,
-      math.max(
-        plan.event.bufferBefore?.inMinutes ?? 0,
-        plan.event.bufferAfter?.inMinutes ?? 0,
+      Duration(
+        microseconds: math.max(
+          plan.event.bufferBefore?.inMicroseconds ?? 0,
+          plan.event.bufferAfter?.inMicroseconds ?? 0,
+        ),
       ),
     );
     final existing = found.where((item) {
@@ -698,28 +843,47 @@ class ActivityCalendar {
     _Snapshot snapshot,
     DateTime start,
     DateTime end,
-    int requestedBuffer,
+    Duration requestedBuffer,
   ) {
     final parsedBuffers = [
-      profile?.defaultBuffer?.inMinutes ?? 0,
-      requestedBuffer,
+      profile?.defaultBuffer?.inMicroseconds ?? 0,
+      requestedBuffer.inMicroseconds,
       for (final row in snapshot.active.values)
         math.max(
-          row.bufferAfter?.inMinutes ?? 0,
-          row.bufferBefore?.inMinutes ?? 0,
+          row.bufferAfter?.inMicroseconds ?? 0,
+          row.bufferBefore?.inMicroseconds ?? 0,
         ),
       for (final series in snapshot.series.values)
         if (series.template case final template?)
-          _SeriesTemplate.decode(template).maxBuffer,
+          Duration(
+            minutes: _SeriesTemplate.decode(template).maxBuffer,
+          ).inMicroseconds,
     ];
-    final padding = Duration(minutes: parsedBuffers.reduce(math.max) * 2 + 60);
+    final padding = Duration(microseconds: parsedBuffers.reduce(math.max) * 2);
     return _entries(
       data,
       snapshot,
-      zones.wall(start.subtract(padding), zones.displayId),
-      zones.wall(end.add(padding), zones.displayId),
+      start.subtract(padding),
+      end.add(padding),
+      instants: true,
     );
   }
+
+  Future<List<BusyInterval>> busyIntervals(
+    PlannerData data,
+    DateTime start,
+    DateTime end, {
+    required Duration sessionBuffer,
+  }) async => [
+    for (final entry in await _paddedEntries(
+      data,
+      await _snapshot(data),
+      start,
+      end,
+      sessionBuffer,
+    ))
+      if (entry.blocks) entry.busy,
+  ];
 
   Set<ScheduleWarning> _warningsFor(
     _Entry proposed,
@@ -727,25 +891,18 @@ class ActivityCalendar {
   ) {
     final warnings = <ScheduleWarning>{};
     for (final entry in existing) {
-      if (entry.other?.kind == CalendarEntryKind.deadline ||
-          entry.other?.status == ActivityStatus.cancelled ||
-          entry.other?.status == ActivityStatus.skipped ||
-          entry.other?.availability == EventAvailability.allDayFree ||
-          entry.event?.availability == EventAvailability.allDayFree ||
-          entry.event?.status == ActivityStatus.cancelled ||
-          entry.event?.status == ActivityStatus.postponed ||
-          entry.event?.status == ActivityStatus.skipped) {
-        continue;
-      }
+      if (!entry.blocks) continue;
       if (proposed.start.isBefore(entry.end) &&
           entry.start.isBefore(proposed.end)) {
         warnings.add(ScheduleWarning.overlap);
-      } else if (proposed.start
-              .subtract(Duration(minutes: proposed.before + entry.after))
-              .isBefore(entry.end) &&
-          entry.start.isBefore(
-            proposed.end.add(Duration(minutes: proposed.after + entry.before)),
-          )) {
+      } else if (overlapsSlot(
+        proposed.busy.slot,
+        bufferedSlot(
+          entry.busy,
+          before: proposed.before,
+          after: proposed.after,
+        ),
+      )) {
         warnings.add(ScheduleWarning.buffer);
       }
     }
@@ -802,23 +959,24 @@ class ActivityCalendar {
             zones.displayId,
           )
         : schedule.end.instant;
-    final fallback = profile?.defaultBuffer?.inMinutes ?? 0;
+    final fallback = profile?.defaultBuffer ?? Duration.zero;
     return _Entry(
       id: event.id,
       title: event.title,
       start: start,
       end: end,
       event: event,
-      before: event.bufferBefore?.inMinutes ?? fallback,
-      after: event.bufferAfter?.inMinutes ?? fallback,
+      before: event.bufferBefore ?? fallback,
+      after: event.bufferAfter ?? fallback,
     );
   }
 
   PreviewEvent _present(
     _Entry entry,
     Map<String, EventSeries> series,
-    DateTime current,
-  ) {
+    DateTime current, {
+    ScheduleWarning? warningOverride,
+  }) {
     final event = entry.event;
     final other = entry.other;
     final owner = series[event?.seriesId];
@@ -882,7 +1040,7 @@ class ActivityCalendar {
       supersedesId: event?.supersedesId,
       isException: event?.details.isException ?? false,
       obligationId: event?.routineOccurrenceId ?? other?.obligationId,
-      warning: warning,
+      warning: warningOverride ?? warning,
       options: EventOptions(
         availability: DayAvailability.values[availability.index],
         category: category?.name ?? '',
@@ -894,8 +1052,8 @@ class ActivityCalendar {
         reminders: event?.details.reminders ?? const [],
         recurrence: rule == null ? 'Sekali' : repeatLabel(rule),
         rule: rule,
-        before: entry.before,
-        after: entry.after,
+        before: entry.before.inMinutes,
+        after: entry.after.inMinutes,
         timeMode: mode,
         zoneId: zone,
         editorStart: schedule == null ? null : editorWall(schedule.start),
@@ -928,16 +1086,34 @@ class _Entry {
     required this.end,
     required this.id,
     required this.title,
-    this.before = 0,
-    this.after = 0,
+    this.before = Duration.zero,
+    this.after = Duration.zero,
     this.event,
     this.other,
   });
   final DateTime start, end;
   final String id, title;
-  final int before, after;
+  final Duration before, after;
   final EventOccurrence? event;
   final CalendarEntry? other;
+
+  bool get blocks {
+    final status = event?.status ?? other?.status;
+    return other?.kind != CalendarEntryKind.deadline &&
+        (event?.availability ?? other?.availability) !=
+            EventAvailability.allDayFree &&
+        status != ActivityStatus.cancelled &&
+        status != ActivityStatus.skipped &&
+        status != ActivityStatus.postponed;
+  }
+
+  BusyInterval get busy => (
+    id: id,
+    title: title,
+    slot: (start: start, end: end),
+    before: before,
+    after: after,
+  );
 }
 
 class _Branch {

@@ -371,7 +371,7 @@ void main() {
   );
 
   test(
-    'suggestion stays before deadline and manual warnings require approval',
+    'manual overlap, active hours, and deadline warnings require approval',
     () async {
       profile = PreviewProfile(
         name: '',
@@ -389,14 +389,6 @@ void main() {
           options: const EventOptions(before: 0, after: 0),
         ),
       );
-      final proposed = await workspace.suggest(
-        task,
-        const Duration(minutes: 40),
-      );
-      expect(proposed, isNotNull);
-      expect(proposed!.start, day(16, 8, 15));
-      expect(proposed.end.isAfter(day(16, 12)), isFalse);
-      expect(await store.workSessions.all(), isEmpty);
       await expectLater(
         workspace.saveSession(task.id, day(16, 10, 50), day(16, 13)),
         throwsA(
@@ -415,8 +407,8 @@ void main() {
       expect(await store.workSessions.all(), isEmpty);
       final saved = await workspace.saveSession(
         task.id,
-        proposed.start,
-        proposed.end,
+        day(16, 8, 15),
+        day(16, 8, 55),
       );
       expect(saved.taskId, task.id);
     },
