@@ -1,4 +1,4 @@
-# Kesiapan rilis Routina · Fase 15
+# Kesiapan rilis Routina · Fase 15–16
 
 **Belum siap untuk distribusi publik.** Audit menggunakan [PRD](../PRD.md), [DESIGN](../DESIGN.md), [referensi FigCraft](FIGCRAFT_SCREEN_MAP.md), dan [rencana fase](IMPLEMENTATION_PLAN.md). Status “Ada” menunjukkan jalur produksi yang terhubung ke data lokal. Batas verifikasi perangkat dicatat terpisah.
 
@@ -14,7 +14,7 @@
 | FR-06 Rutinitas dan timer | Ada. Empat bentuk target, timer dan input manual. `routine_workspace_test` memverifikasi pemulihan setelah membuka kembali SQLite, segmen aktif, Pause/Resume/Stop dan status eksplisit. Lock screen, reboot, force stop, serta perubahan jam OS memerlukan validasi perangkat. |
 | FR-07 Smart Scheduling | Ada. `SchedulingEngine` dan `SmartScheduling` menerapkan slot tunggal/split, batas sesi, preferensi, buffer, zona, review, stale dan persetujuan atomik. Uji engine, workspace, dan layar meliputi bentrok, scope dan selisih sisa durasi. |
 | FR-08 Notifikasi | Ada. `LocalReminders`, adaptor native, Home dan Pengaturan mencakup izin, Jam Tenang, reminder, snooze dan fallback. Uji domain/widget menggunakan adaptor palsu untuk pergantian izin dan pembaruan antrean. Delivery setelah reboot, DND/Focus, perubahan Settings, dan background iOS perlu validasi perangkat. [Batas OS](NOTIFICATIONS.md) |
-| FR-09 Kategori, pencarian dan filter | **Parsial.** CRUD kategori dan reassignment atomik teruji di `local_settings_test`. Tugas punya cari judul, filter tanggal/kategori/status/prioritas dan urut. Statistik punya filter kategori/jenis. Kontrol pencarian judul dan filter aktivitas masih belum tersedia di Kalender dan Rutinitas. |
+| FR-09 Kategori, pencarian dan filter | **COMPLETE (Fase 16).** CRUD kategori dan pemindahan referensi teruji. Pencarian judul, filter gabungan, pengurutan yang relevan, dan state kosong tersedia di Tugas, Kalender, dan Rutinitas pada jalur SQLite produksi. |
 | FR-10 Statistik | Ada. `ProductivityStatistics` membaca data lokal dari Home dan Profil. Uji menghitung dua rasio, periode kosong, pembanding setara/otomatis/manual dan riwayat. |
 | FR-11 Zona dan awal minggu | Ada. `CalendarZones` menerapkan waktu lokal/instant ke kalender, recurrence, tenggat, rutin, statistik dan scheduler. Pengujian mencakup DST dengan jam berulang/hilang dan hitung ulang minggu tanpa mutasi histori. Refresh OS, termasuk pengingat ketika zona perangkat berubah, perlu validasi perangkat lintas OS. |
 | FR-12 Tempat Sampah | Ada. Soft-delete, retensi, restore dengan cek relasi/kategori/bentrok dan penghapusan permanen eksplisit teruji di `trash_workspace_test` dan `trash_screens_test`. Jadwal purge otomatis dan kebijakan statistik setelah purge masih OPEN. |
@@ -31,16 +31,16 @@ Metadata satu frame 390×844 per kelompok diperiksa melalui FigCraft MCP. Entri 
 | SC-02 · 1008 | `PlannerOnboarding`. Tiga langkah dan resume yang disimpan. |
 | SC-03 · 1287 | Penyiapan profil, tujuh hari jam aktif, validasi, sukses dan izin opsional. |
 | SC-04 · 175 | `PlannerHome`. KPI, kosong, loading, error, agenda, konfirmasi dan fallback pengingat. |
-| SC-05 · 1535 | `PlannerCalendar` bulanan. Tanggal, all-day, lintas hari dan daftar aktivitas. |
-| SC-06 · 1695 | Kalender mingguan. Zona tampilan, rentang minggu dan blok bertumpuk. |
-| SC-07 · 1792 | Kalender harian. Linimasa, deadline, all-day, blok di luar jam aktif, loading dan kosong. |
+| SC-05 · 1535 | `PlannerCalendar` bulanan. Tanggal, all-day, lintas hari, daftar aktivitas, dan pencarian/filter. |
+| SC-06 · 1695 | Kalender mingguan. Zona tampilan, rentang minggu, blok bertumpuk, dan pencarian/filter. |
+| SC-07 · 1792 | Kalender harian. Linimasa, deadline, all-day, blok di luar jam aktif, pencarian/filter, loading dan kosong. |
 | SC-08 · 3996 | `EventDetail`. Status temporal/hasil, edit, hapus, scope dan pengganti. Pemulihan melalui Tempat Sampah. |
 | SC-09 · 4033 | `EventEditor` Quick Add. Field wajib, validasi waktu dan konfirmasi warning. |
 | SC-10 · 4069 | Form Lengkap `EventEditor`. Draft, zona, recurrence, all-day dan reminder multipel. |
 | SC-11 · 5428 | `TaskList`. Cari, filter, urut, overdue, kosong, hasil kosong dan retry. |
 | SC-12 · 5495 | `TaskDetail`. Checklist, rencana, aktual, sesi manual, status dan ringkasan sisa. |
 | SC-13 · 5550 | `TaskEditor`. Quick Add, form lengkap, draft, zona tenggat dan reminder. |
-| SC-14 · 6958 | `RoutineBoard`. Progres, target menunggu status, timer, kosong dan histori. |
+| SC-14 · 6958 | `RoutineBoard`. Progres, target menunggu status, timer, pencarian/filter, kosong dan histori. |
 | SC-15 · 7021 | `RoutineEditor`. Draft, bentuk target, frekuensi dan validasi. |
 | SC-16 · 7053 | `RoutineDetail` dan `RoutineHistory`. Timer, pemulihan, status, input manual dan riwayat. |
 | SC-17 · 8138 | `SmartSchedulePage`. Review estimasi, tenggat, batas sesi dan kekurangan input. |
@@ -74,7 +74,7 @@ Metadata satu frame 390×844 per kelompok diperiksa melalui FigCraft MCP. Entri 
 - Flutter 3.41.2 masih dapat meregistrasi plugin khusus pengembangan pada iOS. Periksa apakah plugin integrasi masih ikut di build publik saat memvalidasi paket iOS. [Flutter issue 163874](https://github.com/flutter/flutter/issues/163874)
 - `sqflite_darwin` memakai Documents sebagai path default. SQLite iOS belum memiliki pengecualian backup OS yang diverifikasi. Perubahan lokasi database perlu migrasi yang mempertahankan data lama beserta jurnal/sidecar dan pengujian rollback pada perangkat. [Dokumentasi backup Apple](https://developer.apple.com/documentation/foundation/optimizing-your-app-s-data-for-icloud-backup)
 
-## Hasil pengujian
+## Hasil pengujian · Fase 15
 
 - Format Dart seluruh `lib`, `test`, `integration_test`, dan `test_driver`, serta `flutter analyze --no-pub` lulus. Lockfile berhasil diresolusi dengan `flutter pub get --offline --enforce-lockfile`.
 - `flutter test --no-pub --concurrency=1 --reporter=expanded` lulus **144 unit/widget test**. Cakupan meliputi recurrence, zona asal/device-local, DST gap dan fold, lintas tengah malam, konflik/buffer, proposal stale, timer lifecycle dengan clock terkontrol, izin palsu/Jam Tenang, dua rasio dan deduplikasi KPI, perubahan awal minggu, retensi, password salah, korupsi dan rollback kegagalan penulisan.
@@ -84,9 +84,26 @@ Metadata satu frame 390×844 per kelompok diperiksa melalui FigCraft MCP. Entri 
 - `flutter build apk --release` lulus. Build awal dengan `--no-pub` membaca registrasi plugin Android dari mode debug dan gagal pada referensi `IntegrationTestPlugin`. Build ulang dengan resolusi paket bawaan meregenerasi registrasi untuk mode release.
 - APK release berada di `build/app/outputs/flutter-apk/app-release.apk` (63.831.566 byte) dan unsigned sesuai verifikasi `apksigner`. Manifest APK menetapkan minimum API 24 dan target API 36, tanpa izin INTERNET, dengan `allowBackup=false` dan aturan transfer. APK mencakup arm64-v8a, armeabi-v7a, dan x86_64. `zipalign -c -P 16 4` lulus. Seluruh segmen ELF LOAD arm64-v8a dan x86_64 ter-align minimal 16 KiB. Runtime 16 KiB dan AAB bertanda tangan masih perlu diverifikasi.
 
+## Audit FR-09 · Fase 16
+
+| Ketentuan | Implementasi |
+| --- | --- |
+| Kategori bersama | CRUD nama, ikon, warna, serta pemindahan referensi ke kategori pengganti atau Tanpa Kategori sudah ada. Uji transaksi dan rollback tetap berada di `local_settings_test`. Pencarian Kalender dan Rutinitas memakai ID kategori. |
+| Tugas | Pencarian judul, filter tanggal tenggat/kategori/status/prioritas, urut tenggat/prioritas, dan state kosong sudah tersedia pada `TaskList`. |
+| Kalender · SC-05–SC-07 | Cari judul di periode hari/minggu/bulan atau persempit ke satu tanggal. Filter kategori dan status mengikuti proyeksi kalender, termasuk Overdue pada penanda tenggat. Sortir waktu awal/akhir berdasarkan instant aktual. Tanggal memakai zona tampilan dan mencakup aktivitas yang melintasi tanggal terpilih. Tutup pencarian untuk kembali ke kalender. |
+| Rutinitas · SC-14 | Cari judul, filter kategori dan status dari progres/kejadian yang sudah dipakai oleh kartu. Filter tanggal mencakup kejadian aktif dan rutinitas yang ditargetkan oleh cadence yang berlaku pada tanggal itu. Rutinitas tanpa jam muncul terakhir saat hasil diurutkan menurut jam jadwal. |
+| Gabungan dan hasil kosong | Judul dicocokkan tanpa membedakan kapital dan mengabaikan spasi tepi. Filter digabung dengan AND. Pengurutan berlaku pada hasil yang cocok. State kosong menyediakan Bersihkan filter. Item terhapus dikecualikan dari hasil aktif. |
+
+Jalur produksi membaca proyeksi SQLite yang sama dengan kalender dan daftar rutinitas. Filter judul, kategori, status, dan pengurutan bekerja pada data yang telah dibaca. Penentuan cadence dibagi dengan agregasi rutinitas melalui fungsi yang sama. Rumus KPI dan logika Smart Scheduling tetap sama.
+
+- `flutter analyze --no-pub` bersih. Regresi penuh lulus **151 unit/widget test**, termasuk Smart Scheduling, KPI, recurrence, zona waktu dan status. Widget test baru memverifikasi kombinasi filter, empty/reset, dan tampilan 320 dp dengan teks 200%.
+- Satu tes integrasi Fase 16 lulus pada Android 16/API 36 menggunakan SQLite native, dengan Wi-Fi dan data seluler mati serta tanpa rute default. Tes mencakup kombinasi filter di Kalender dan Rutinitas, urutan, hasil kosong, pengecualian Tempat Sampah, dan pembukaan detail.
+- Tiga tangkapan layar di `build/visual-audit/f16-*.png` diperiksa terhadap kerangka FigCraft SC-05/07 (1535, 1792), SC-14 (6958), dan varian pencarian/filter/kosong SC-11 (6035, 6092, 5929). Field outline, chip aktif kuning, kartu kosong berbayang dan aksi reset memakai token DESIGN. Uji ukuran kecil juga menemukan dan memverifikasi perbaikan tata letak aksi Lihat hari di Kalender bulanan.
+- Uji native iOS masih terbuka karena host Windows. Kebijakan nama kategori duplikat tercatat OPEN pada DESIGN SC-26.
+
 ## Checklist sebelum distribusi publik
 
-- [ ] Lengkapi pencarian dan filter aktivitas pada Kalender dan Rutinitas (FR-09).
+- [x] Pencarian dan filter Kalender serta Rutinitas lulus validasi FR-09 Fase 16.
 - [ ] Tentukan kebijakan backup OS iOS untuk SQLite lokal. Uji upgrade, data transfer dan restore perangkat tanpa kehilangan riwayat.
 - [ ] Selesaikan review keamanan format, algoritma, iterasi dan batas pembacaan backup. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
 - [ ] Uji perubahan izin saat aplikasi kembali dari Settings, delivery saat reboot, DND/Focus, lock screen, pergantian zona dan penghentian proses pada perangkat. Ketepatan pengiriman mengikuti pembatasan OS.

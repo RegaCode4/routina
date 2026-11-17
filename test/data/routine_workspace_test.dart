@@ -66,6 +66,47 @@ void main() {
   );
 
   test(
+    'the date filter reads historical cadence and suppresses deleted occurrences',
+    () async {
+      final routine = await duration();
+      expect(await workspace.list(date(15), onDateOnly: true), isEmpty);
+      expect(
+        (await workspace.list(date(16), onDateOnly: true)).single.routine.id,
+        routine.id,
+      );
+      final occurrence = await database.routineOccurrences.save(
+        RoutineOccurrence(
+          RecordMetadata.create(),
+          routineId: routine.id,
+          day: LocalDate.parse('2026-11-16'),
+        ),
+      );
+      await database.softDelete((
+        kind: RecordKind.routineOccurrence,
+        id: occurrence.id,
+      ));
+      expect(await workspace.list(date(16), onDateOnly: true), isEmpty);
+      expect((await workspace.list(date(16))).single.occurrence, isNull);
+
+      now = date(17, 8);
+      await workspace.save(
+        Routine(
+          routine.metadata,
+          title: routine.title,
+          targetType: routine.targetType,
+          targetDuration: routine.targetDuration,
+          frequencyRule: 'FREQ=DAILY;BYDAY=SA,SU',
+        ),
+      );
+      expect(await workspace.list(date(17), onDateOnly: true), isEmpty);
+      expect(
+        (await workspace.list(date(21), onDateOnly: true)).single.routine.id,
+        routine.id,
+      );
+    },
+  );
+
+  test(
     'manual checklist, counts and frequency survive a restart and week setting changes',
     () async {
       final checklist = await workspace.save(

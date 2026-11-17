@@ -1,6 +1,7 @@
 import 'package:routina/application/activity_calendar.dart';
 import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/planner_preview.dart' show ActivityWarnings;
+import 'package:routina/application/routine_cadence.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
@@ -9,6 +10,18 @@ import 'package:routina/domain/preview_event.dart';
 class RoutineIssue implements Exception {
   const RoutineIssue(this.message);
   final String message;
+}
+
+enum RoutineStatus {
+  notStarted('Belum dimulai'),
+  active('Berlangsung'),
+  pending('Menunggu konfirmasi'),
+  completed('Selesai'),
+  skipped('Dilewatkan'),
+  missed('Terlewat');
+
+  const RoutineStatus(this.label);
+  final String label;
 }
 
 class RoutineView {
@@ -56,6 +69,19 @@ class RoutineView {
   bool goalReachedAt(DateTime now) => target > 0 && achievedAt(now) >= target;
   double progressAt(DateTime now) =>
       target == 0 ? 0 : (achievedAt(now) / target).clamp(0.0, 1.0).toDouble();
+
+  RoutineStatus statusAt(DateTime now) {
+    if (completed) return RoutineStatus.completed;
+    if (occurrence?.status == ActivityStatus.skipped) {
+      return RoutineStatus.skipped;
+    }
+    if (goalReachedAt(now)) return RoutineStatus.pending;
+    if (timer?.runningSince != null) return RoutineStatus.active;
+    final end = occurrence?.schedule?.end.instant;
+    return end != null && now.isAfter(end)
+        ? RoutineStatus.missed
+        : RoutineStatus.notStarted;
+  }
 }
 
 class RoutineWorkspace {
@@ -78,14 +104,38 @@ class RoutineWorkspace {
   DateTime weekStart(DateTime day) =>
       civilWeekStart(day, sundayFirst: sundayFirst());
 
-  Future<List<RoutineView>> list(DateTime day) async =>
-      (await openStore()).transaction((data) async {
-        final records = await _RoutineData.read(data);
-        return [
-          for (final routine in await data.routines.all())
-            _view(routine, civilDate(day), records),
-        ];
-      });
+  Future<List<RoutineView>> list(
+    DateTime day, {
+    bool onDateOnly = false,
+  }) async => (await openStore()).transaction((data) async {
+    final records = await _RoutineData.read(data);
+    final date = civilDate(day);
+    final key = civilKey(date);
+    final recorded = onDateOnly
+        ? {
+            for (final row in await data.routineOccurrences.all(
+              includeDeleted: true,
+            ))
+              if (row.day.value == key) row.routineId,
+          }
+        : const <String>{};
+    final displayZones = zones;
+    final rows = [
+      for (final routine in await data.routines.all())
+        _view(routine, date, records),
+    ];
+    return [
+      for (final row in rows)
+        if (!onDateOnly ||
+            row.occurrence != null ||
+            (!recorded.contains(row.routine.id) &&
+                matchesRoutineCadence(
+                  routineCadenceHistory(row.routine, displayZones),
+                  date,
+                )))
+          row,
+    ];
+  });
 
   Future<RoutineView?> read(String id, DateTime day) async =>
       (await openStore()).transaction((data) async {

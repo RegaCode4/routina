@@ -207,6 +207,8 @@ class PreviewEvent {
     this.supersedesId,
     this.isException = false,
     this.obligationId,
+    this.categoryId,
+    this.startInstant,
   });
 
   final String id;
@@ -222,6 +224,8 @@ class PreviewEvent {
   final String? supersedesId;
   final bool isException;
   final String? obligationId;
+  final String? categoryId;
+  final DateTime? startInstant;
 
   bool get allDay => options.availability != DayAvailability.timed;
 
@@ -242,6 +246,8 @@ class PreviewEvent {
     supersedesId: supersedesId,
     isException: isException,
     obligationId: obligationId,
+    categoryId: categoryId,
+    startInstant: startInstant,
   );
 }
 

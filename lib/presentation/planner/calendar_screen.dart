@@ -1,14 +1,17 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:routina/application/activity_search.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
 import 'package:routina/presentation/design_system/neo_card.dart';
 import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/design_system/planner_cards.dart';
+import 'package:routina/presentation/planner/activity_search_controls.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 
 enum CalendarView {
@@ -48,11 +51,18 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
   late CalendarView _view = widget.requestedView;
   late Future<List<PreviewEvent>> _load = _read();
   final _scroll = ScrollController();
+  final _query = TextEditingController();
+  bool _searching = false;
+  bool _dateFiltered = false;
+  String? _categoryId;
+  CalendarStatus? _status;
+  AgendaOrder _order = AgendaOrder.chronological;
   bool _wita = false;
 
   @override
   void dispose() {
     _scroll.dispose();
+    _query.dispose();
     super.dispose();
   }
 
@@ -70,6 +80,8 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
     if (oldWidget.selection != widget.selection) {
       _date = widget.requestedDay ?? widget.repository.calendarDay;
       _view = widget.requestedView;
+      _searching = false;
+      _clearSearch();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && _scroll.hasClients) _scroll.jumpTo(0);
       });
@@ -79,6 +91,27 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
             oldWidget.revision != widget.revision)) {
       _load = _read();
     }
+    if (_categoryId?.isNotEmpty == true &&
+        !widget.repository.categories.any((row) => row.id == _categoryId)) {
+      _categoryId = null;
+    }
+  }
+
+  void _clearSearch() {
+    _query.clear();
+    _categoryId = null;
+    _status = null;
+    _dateFiltered = false;
+    _order = AgendaOrder.chronological;
+  }
+
+  void _toggleSearch() {
+    FocusScope.of(context).unfocus();
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) _clearSearch();
+    });
   }
 
   bool get _sunday => widget.repository.profile?.sundayFirst ?? false;
@@ -125,7 +158,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
           entry,
   ];
 
-  Future<void> _chooseDate() async {
+  Future<void> _chooseDate({bool filter = false}) async {
     final value = await pickPreviewDate(
       context,
       widget.repository.today,
@@ -134,9 +167,121 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
     if (mounted && value != null) {
       setState(() {
         _date = value;
+        if (filter) _dateFiltered = true;
         if (widget.repository.usesStoredCalendar) _load = _read();
       });
     }
+  }
+
+  Future<void> _pickDateFilter() async {
+    FocusScope.of(context).unfocus();
+    final filter = await previewChoices(
+      context,
+      'Tanggal aktivitas',
+      [true, false],
+      (filter) => filter ? 'Pilih tanggal' : 'Periode tampilan',
+    );
+    if (!mounted || filter == null) return;
+    if (filter) {
+      await _chooseDate(filter: true);
+    } else {
+      setState(() => _dateFiltered = false);
+    }
+  }
+
+  Widget _searchControls() => ActivitySearchControls(
+    label: 'Cari aktivitas kalender',
+    controller: _query,
+    onChanged: (_) => setState(() {}),
+    chips: [
+      CategoryChip(
+        label: _dateFiltered ? dateLabel(_date) : 'Tanggal',
+        selected: _dateFiltered,
+        onSelected: (_) => _pickDateFilter(),
+      ),
+      SearchCategoryChip(
+        categories: widget.repository.categories,
+        selectedId: _categoryId,
+        onSelected: (value) => setState(() => _categoryId = value),
+      ),
+      CategoryChip(
+        label: _status?.label ?? 'Status',
+        selected: _status != null,
+        onSelected: (_) async {
+          FocusScope.of(context).unfocus();
+          final choices = [
+            'Semua status',
+            ...CalendarStatus.values.map((s) => s.label),
+          ];
+          final pick = await previewChoices(
+            context,
+            'Status aktivitas',
+            choices,
+            (label) => label,
+          );
+          if (mounted && pick != null) {
+            setState(
+              () => _status = CalendarStatus.values
+                  .where((s) => s.label == pick)
+                  .firstOrNull,
+            );
+          }
+        },
+      ),
+      CategoryChip(
+        label: _order == AgendaOrder.chronological ? 'Urutkan' : _order.label,
+        selected: _order != AgendaOrder.chronological,
+        onSelected: (_) async {
+          FocusScope.of(context).unfocus();
+          final pick = await previewChoices(
+            context,
+            'Urutkan aktivitas',
+            AgendaOrder.values,
+            (order) => order.label,
+          );
+          if (mounted && pick != null) setState(() => _order = pick);
+        },
+      ),
+    ],
+  );
+
+  Widget _searchResults(List<PreviewEvent> entries) {
+    final matches = searchCalendar(
+      entries,
+      title: _query.text,
+      categoryId: _categoryId,
+      status: _status,
+      day: _dateFiltered ? _date : null,
+      period: _view == CalendarView.month && !_dateFiltered
+          ? (
+              from: DateTime(_date.year, _date.month),
+              until: DateTime(_date.year, _date.month + 1),
+            )
+          : null,
+      order: _order,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          _dateFiltered
+              ? 'Hasil · ${dateLabel(_date)}'
+              : 'Hasil · ${_period()}',
+          style: NeoType.section,
+        ),
+        const SizedBox(height: NeoSpace.xs),
+        if (matches.isEmpty)
+          ActivitySearchEmpty(
+            title: 'Aktivitas tidak ditemukan',
+            onClear: () => setState(_clearSearch),
+          ),
+        for (final entry in matches)
+          Padding(
+            padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+            child: _entryCard(entry, showDate: true),
+          ),
+      ],
+    );
   }
 
   Future<void> _chooseZone() async {
@@ -174,10 +319,25 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
     children: [
       AppHeader(
         title: 'Kalender',
-        action: NeoIconButton(
-          icon: Icons.calendar_today_outlined,
-          label: 'Pilih tanggal kalender',
-          onPressed: _chooseDate,
+        action: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.repository.usesStoredCalendar) ...[
+              NeoIconButton(
+                icon: _searching ? Icons.close : Icons.search,
+                label: _searching
+                    ? 'Tutup pencarian kalender'
+                    : 'Cari dan filter kalender',
+                onPressed: _toggleSearch,
+              ),
+              const SizedBox(width: NeoSpace.xxs),
+            ],
+            NeoIconButton(
+              icon: Icons.calendar_today_outlined,
+              label: 'Pilih tanggal kalender',
+              onPressed: _chooseDate,
+            ),
+          ],
         ),
       ),
       Padding(
@@ -234,6 +394,10 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                 ),
               ),
             const SizedBox(height: NeoSpace.sm),
+            if (_searching) ...[
+              _searchControls(),
+              const SizedBox(height: NeoSpace.md),
+            ],
             FutureBuilder<List<PreviewEvent>>(
               future: _load,
               builder: (context, snapshot) {
@@ -262,6 +426,7 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
                   );
                 }
                 final entries = _entries(snapshot.data ?? const []);
+                if (_searching) return _searchResults(entries);
                 final dayEntries =
                     entries.where((item) => appearsOn(item, _date)).toList()
                       ..sort((a, b) => a.start.compareTo(b.start));
@@ -317,9 +482,12 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
           ),
         ),
         const SizedBox(height: NeoSpace.md),
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: NeoSpace.xs,
           children: [
-            Expanded(child: Text(dateLabel(_date), style: NeoType.section)),
+            Text(dateLabel(_date), style: NeoType.section),
             TextButton(
               onPressed: () => _selectView(CalendarView.day),
               child: const Text('Lihat hari'),
@@ -596,23 +764,26 @@ class _PlannerCalendarState extends State<PlannerCalendar> {
           ],
         );
 
-  Widget _entryCard(PreviewEvent entry) => ActivityCard(
-    title: entry.title,
-    time: eventTime(entry),
-    category: entry.kind == PreviewKind.deadline
-        ? entry.options.zone
-        : entry.kind == PreviewKind.session
-        ? 'Sesi pengerjaan'
-        : entry.warning != null
-        ? warningTitle(entry.warning!)
-        : entry.options.category.isEmpty
-        ? null
-        : entry.options.category,
-    recurring: entry.series != null,
-    status: agendaStatus(entry),
-    highlighted: entry.options.availability == DayAvailability.busy,
-    onTap: () => widget.onOpen(entry),
-  );
+  Widget _entryCard(PreviewEvent entry, {bool showDate = false}) =>
+      ActivityCard(
+        title: entry.title,
+        time: showDate
+            ? '${dateLabel(entry.start)} · ${eventTime(entry)}'
+            : eventTime(entry),
+        category: entry.kind == PreviewKind.deadline
+            ? entry.options.zone
+            : entry.kind == PreviewKind.session
+            ? 'Sesi pengerjaan'
+            : entry.warning != null
+            ? warningTitle(entry.warning!)
+            : entry.options.category.isEmpty
+            ? null
+            : entry.options.category,
+        recurring: entry.series != null,
+        status: agendaStatus(entry),
+        highlighted: entry.options.availability == DayAvailability.busy,
+        onTap: () => widget.onOpen(entry),
+      );
 }
 
 class _ViewControl extends StatelessWidget {

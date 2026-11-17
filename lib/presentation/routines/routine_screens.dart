@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:routina/application/activity_search.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/domain/event_recurrence.dart';
@@ -14,6 +15,7 @@ import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/design_system/planner_cards.dart';
+import 'package:routina/presentation/planner/activity_search_controls.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 import 'package:routina/presentation/routines/routine_editor.dart';
 
@@ -39,19 +41,15 @@ String _actual(RoutineView view, DateTime now) => switch (view.goal.type) {
   RoutineTargetType.frequency => '${view.weeklyCount} kali minggu ini',
 };
 
-NeoStatus? _badge(RoutineView view, DateTime now) {
-  if (view.completed) return NeoStatus.completed;
-  if (view.occurrence?.status == ActivityStatus.skipped) {
-    return NeoStatus.skipped;
-  }
-  if (view.goalReachedAt(now)) return NeoStatus.pending;
-  if (view.timer?.runningSince != null) return NeoStatus.active;
-  final scheduledEnd = view.occurrence?.schedule?.end.instant;
-  if (scheduledEnd != null && now.isAfter(scheduledEnd)) {
-    return NeoStatus.missed;
-  }
-  return null;
-}
+NeoStatus? _badge(RoutineView view, DateTime now) =>
+    switch (view.statusAt(now)) {
+      RoutineStatus.notStarted => null,
+      RoutineStatus.active => NeoStatus.active,
+      RoutineStatus.pending => NeoStatus.pending,
+      RoutineStatus.completed => NeoStatus.completed,
+      RoutineStatus.skipped => NeoStatus.skipped,
+      RoutineStatus.missed => NeoStatus.missed,
+    };
 
 class RoutineBoard extends StatefulWidget {
   const RoutineBoard({
@@ -74,22 +72,57 @@ class RoutineBoard extends StatefulWidget {
 }
 
 class _RoutineBoardState extends State<RoutineBoard> {
+  final _query = TextEditingController();
+  bool _searching = false;
+  bool _dateFiltered = false;
+  String? _categoryId;
+  RoutineStatus? _status;
+  AgendaOrder? _order;
   DateTime? _selected;
   late Future<List<RoutineView>> _read = _load();
   DateTime get _day => _selected ?? widget.workspace.today;
 
   Future<List<RoutineView>> _load() async {
     await widget.workspace.reconcileGoals();
-    return widget.workspace.list(_day);
+    return widget.workspace.list(_day, onDateOnly: _dateFiltered);
   }
 
   @override
   void didUpdateWidget(covariant RoutineBoard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.revision != oldWidget.revision) _read = _load();
+    if (_categoryId?.isNotEmpty == true &&
+        !widget.repository.categories.any((row) => row.id == _categoryId)) {
+      _categoryId = null;
+    }
   }
 
-  Future<void> _date() async {
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _clearSearch() {
+    _query.clear();
+    _categoryId = null;
+    _status = null;
+    _order = null;
+    if (_dateFiltered) {
+      _dateFiltered = false;
+      _read = _load();
+    }
+  }
+
+  void _toggleSearch() {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _searching = !_searching;
+      if (!_searching) _clearSearch();
+    });
+  }
+
+  Future<void> _date({bool filter = false}) async {
     final date = await pickPreviewDate(
       context,
       widget.workspace.today,
@@ -98,43 +131,154 @@ class _RoutineBoardState extends State<RoutineBoard> {
     if (mounted && date != null) {
       setState(() {
         _selected = civilDate(date);
+        if (filter) _dateFiltered = true;
         _read = _load();
       });
     }
   }
+
+  Future<void> _pickDateFilter() async {
+    FocusScope.of(context).unfocus();
+    final filter = await previewChoices(
+      context,
+      'Tanggal rutinitas',
+      [true, false],
+      (filter) => filter ? 'Pilih tanggal' : 'Semua rutinitas',
+    );
+    if (!mounted || filter == null) return;
+    if (filter) {
+      await _date(filter: true);
+    } else if (_dateFiltered) {
+      setState(() {
+        _dateFiltered = false;
+        _read = _load();
+      });
+    }
+  }
+
+  Widget _searchControls() => ActivitySearchControls(
+    label: 'Cari rutinitas',
+    controller: _query,
+    onChanged: (_) => setState(() {}),
+    chips: [
+      CategoryChip(
+        label: _dateFiltered ? dateLabel(_day) : 'Tanggal',
+        selected: _dateFiltered,
+        onSelected: (_) => _pickDateFilter(),
+      ),
+      SearchCategoryChip(
+        categories: widget.repository.categories,
+        selectedId: _categoryId,
+        onSelected: (value) => setState(() => _categoryId = value),
+      ),
+      CategoryChip(
+        label: _status?.label ?? 'Status',
+        selected: _status != null,
+        onSelected: (_) async {
+          FocusScope.of(context).unfocus();
+          final choices = [
+            'Semua status',
+            ...RoutineStatus.values.map((s) => s.label),
+          ];
+          final pick = await previewChoices(
+            context,
+            'Status rutinitas',
+            choices,
+            (label) => label,
+          );
+          if (mounted && pick != null) {
+            setState(
+              () => _status = RoutineStatus.values
+                  .where((s) => s.label == pick)
+                  .firstOrNull,
+            );
+          }
+        },
+      ),
+      CategoryChip(
+        label: _order?.label ?? 'Urutkan',
+        selected: _order != null,
+        onSelected: (_) async {
+          FocusScope.of(context).unfocus();
+          final values = [
+            'Urutan bawaan',
+            ...AgendaOrder.values.map((order) => order.label),
+          ];
+          final pick = await previewChoices(
+            context,
+            'Urutkan jadwal rutinitas',
+            values,
+            (label) => label,
+          );
+          if (mounted && pick != null) {
+            setState(
+              () => _order = AgendaOrder.values
+                  .where((order) => order.label == pick)
+                  .firstOrNull,
+            );
+          }
+        },
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
       AppHeader(
         title: 'Rutinitas',
-        action: NeoIconButton(
-          label: 'Pilih tanggal rutinitas',
-          icon: Icons.calendar_today_outlined,
-          onPressed: _date,
+        action: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            NeoIconButton(
+              label: _searching
+                  ? 'Tutup pencarian rutinitas'
+                  : 'Cari dan filter rutinitas',
+              icon: _searching ? Icons.close : Icons.search,
+              onPressed: _toggleSearch,
+            ),
+            const SizedBox(width: NeoSpace.xxs),
+            NeoIconButton(
+              label: 'Pilih tanggal rutinitas',
+              icon: Icons.calendar_today_outlined,
+              onPressed: _date,
+            ),
+          ],
         ),
       ),
       Expanded(
         child: FutureBuilder<List<RoutineView>>(
           future: _read,
           builder: (context, snapshot) {
-            final rows = snapshot.data ?? const <RoutineView>[];
+            final all = snapshot.data ?? const <RoutineView>[];
             final week = widget.workspace.weekStart(_day);
             final finish = week.add(const Duration(days: 6));
             final now = widget.workspace.now();
-            final weekly = rows
+            final rows = _searching
+                ? searchRoutines(
+                    all,
+                    title: _query.text,
+                    zones: widget.workspace.zones,
+                    now: now,
+                    categoryId: _categoryId,
+                    status: _status,
+                    order: _order,
+                  )
+                : all;
+            final weekly = all
                 .where((view) => view.goal.type == RoutineTargetType.frequency)
                 .toList();
             final reached = weekly
                 .where((view) => view.goalReachedAt(now))
                 .length;
-            return DemoList(tab: true, [
+            return DemoList(key: ValueKey(_searching), tab: true, [
               DemoHeading(
                 'Jaga ritmemu',
                 subtitle:
                     'Minggu ini · ${dateLabel(week)} – ${dateLabel(finish, year: true)}',
               ),
-              if (weekly.isNotEmpty)
+              if (_searching) _searchControls(),
+              if (!_searching && weekly.isNotEmpty)
                 NeoCard(
                   tone: NeoCardTone.yellow,
                   emphasis: true,
@@ -169,11 +313,16 @@ class _RoutineBoardState extends State<RoutineBoard> {
                   ),
                 )
               else if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData)
+                  (_searching || !snapshot.hasData))
                 const Center(
                   child: CircularProgressIndicator(
                     semanticsLabel: 'Memuat rutinitas',
                   ),
+                )
+              else if (rows.isEmpty && _searching)
+                ActivitySearchEmpty(
+                  title: 'Rutinitas tidak ditemukan',
+                  onClear: () => setState(_clearSearch),
                 )
               else if (rows.isEmpty)
                 PreviewNotice(
@@ -192,8 +341,12 @@ class _RoutineBoardState extends State<RoutineBoard> {
                   children: [
                     Text(
                       _day == widget.workspace.today
-                          ? 'Rutinitas hari ini'
-                          : dateLabel(_day),
+                          ? (_searching
+                                ? 'Hasil · Hari ini'
+                                : 'Rutinitas hari ini')
+                          : (_searching
+                                ? 'Hasil · ${dateLabel(_day)}'
+                                : dateLabel(_day)),
                       style: NeoType.section,
                     ),
                     TextButton(

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:routina/application/calendar_zones.dart';
+import 'package:routina/application/routine_cadence.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
@@ -238,24 +239,14 @@ class ActivityCalendar {
     final routineDays = <(String, String)>{};
     final items = <ProductivityItem>[];
     for (final routine in routines) {
-      final createdAt = routine.metadata.createdAt;
-      final history = routine.cadenceHistory.isNotEmpty || createdAt == null
-          ? routine.cadenceHistory
-          : [
-              RoutineCadence(
-                LocalDate.parse(
-                  civilKey(zones.wall(createdAt, zones.displayId)),
-                ),
-                routine.frequencyRule,
-              ),
-            ];
+      final history = routineCadenceHistory(routine, zones);
       for (final day in days) {
         final key = (routine.id, civilKey(day));
         final occurrence = targets[key];
         final virtual =
             occurrence == null &&
             !recordedDays.contains(key) &&
-            _matchesCadence(history, day);
+            matchesRoutineCadence(history, day);
         if (occurrence == null && !virtual) continue;
         if (occurrence?.status != ActivityStatus.cancelled) {
           routineDays.add(key);
@@ -315,28 +306,6 @@ class ActivityCalendar {
       }
     }
     return items;
-  }
-
-  bool _matchesCadence(List<RoutineCadence> history, DateTime date) {
-    final key = civilKey(date);
-    final rule = history.reversed
-        .where((version) => version.from.value.compareTo(key) <= 0)
-        .firstOrNull
-        ?.rule;
-    if (rule == null) return false;
-    final fields = rule.split(';');
-    if (fields.first != 'FREQ=DAILY' && fields.first != 'FREQ=WEEKLY') {
-      return false;
-    }
-    final byDay = fields
-        .where((field) => field.startsWith('BYDAY='))
-        .firstOrNull;
-    if (byDay == null) return fields.first == 'FREQ=DAILY';
-    const weekdays = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
-    return byDay
-        .substring('BYDAY='.length)
-        .split(',')
-        .contains(weekdays[date.weekday - 1]);
   }
 
   String? _originRoutine(
@@ -1431,12 +1400,9 @@ class ActivityCalendar {
     final event = entry.event;
     final other = entry.other;
     final owner = series[event?.seriesId];
+    final categoryId = event == null ? other?.categoryId : event.categoryId;
     final category = categories
-        .where(
-          (item) =>
-              item.id ==
-              (event?.categoryId ?? (event == null ? other?.categoryId : null)),
-        )
+        .where((item) => item.id == categoryId)
         .firstOrNull;
     final status = event?.status ?? other!.status;
     final state = switch (status) {
@@ -1491,6 +1457,8 @@ class ActivityCalendar {
       supersedesId: event?.supersedesId,
       isException: event?.details.isException ?? false,
       obligationId: event?.routineOccurrenceId ?? other?.obligationId,
+      categoryId: categoryId,
+      startInstant: entry.start,
       warning: warningOverride ?? warning,
       options: EventOptions(
         availability: DayAvailability.values[availability.index],
