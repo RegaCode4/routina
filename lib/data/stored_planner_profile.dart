@@ -4,6 +4,7 @@ import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
+import 'package:routina/application/trash_workspace.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
@@ -104,6 +105,16 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     final readZone = _readDeviceZone;
     if (readZone != null) _deviceZone = await readZone();
   }
+
+  @override
+  late final TrashWorkspace trashWorkspace = TrashWorkspace(
+    openStore: _database,
+    openCalendar: () async {
+      await _refreshDeviceZone();
+      return _calendar();
+    },
+    now: _now,
+  );
 
   @override
   bool get usesStoredCalendar => true;

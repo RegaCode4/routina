@@ -1,6 +1,7 @@
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/task_workspace.dart';
+import 'package:routina/application/trash_workspace.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -30,6 +31,7 @@ abstract interface class PlannerPreviewRepository {
   bool get usesStoredCalendar;
   TaskWorkspace? get taskWorkspace;
   RoutineWorkspace? get routineWorkspace;
+  TrashWorkspace? get trashWorkspace;
   LocalReminders? get localReminders;
   String get calendarZoneLabel;
 

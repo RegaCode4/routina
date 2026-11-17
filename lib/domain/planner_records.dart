@@ -560,16 +560,27 @@ class StatusHistory extends PlannerRecord {
 }
 
 class TrashEntry extends PlannerRecord {
-  const TrashEntry(
+  TrashEntry(
     super.metadata, {
     required this.target,
     required this.deletedAt,
+    DateTime? expiresAt,
     this.restoredAt,
-  });
+    this.seriesCut,
+    this.previousSeriesEnd,
+    this.archiveId,
+  }) : expiresAt = expiresAt ?? deletedAt.toUtc().add(retention);
 
+  static const retention = Duration(days: 30);
   final RecordRef target;
   final DateTime deletedAt;
+  final DateTime expiresAt;
   final DateTime? restoredAt;
+  final LocalDate? seriesCut, previousSeriesEnd;
+  final String? archiveId;
+
+  bool canRestoreAt(DateTime now) =>
+      restoredAt == null && now.isBefore(expiresAt);
 }
 
 enum CalendarEntryKind { event, deadline, workSession, routine }

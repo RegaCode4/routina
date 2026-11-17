@@ -10,6 +10,7 @@ import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/planner/event_editor.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
+import 'package:routina/presentation/planner/trash_screen.dart';
 
 class EventDetail extends StatefulWidget {
   const EventDetail({
@@ -140,11 +141,12 @@ class _EventDetailState extends State<EventDetail> {
       if (mounted) setState(() => _event = updated);
     } catch (error) {
       if (mounted) {
-        _feedback(
-          error is StateError
-              ? error.message
-              : 'Perubahan belum dapat disimpan. Coba lagi.',
-        );
+        _feedback(switch (error) {
+          TrashProblem.alreadyArchived =>
+            'Seri ini masih memiliki cakupan di Tempat Sampah.',
+          StateError() => error.message,
+          _ => 'Perubahan belum dapat disimpan. Coba lagi.',
+        });
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -360,6 +362,19 @@ class _EventDetailState extends State<EventDetail> {
   );
 
   Future<void> _showTrash(BuildContext context) async {
+    if (widget.repository.trashWorkspace case final workspace?) {
+      var changed = false;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => TrashScreen(
+            workspace: workspace,
+            onChanged: () => changed = true,
+          ),
+        ),
+      );
+      if (context.mounted && changed) Navigator.of(context).pop();
+      return;
+    }
     List<PreviewEvent> entries;
     try {
       entries = await widget.repository.readTrashedActivities();

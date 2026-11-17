@@ -2,6 +2,7 @@ import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/application/task_workspace.dart';
+import 'package:routina/application/trash_workspace.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
@@ -84,6 +85,8 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   List<PreviewEvent> get homeEntries => events;
   @override
   bool get usesStoredCalendar => false;
+  @override
+  TrashWorkspace? get trashWorkspace => null;
   @override
   PreviewEvent? get homeNextEvent => null;
   @override

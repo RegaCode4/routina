@@ -37,8 +37,17 @@ abstract interface class PlannerData {
   /// Calendar intervals overlap a half-open range. Deadlines are points.
   Future<List<CalendarEntry>> calendar(DateTime from, DateTime until);
   Future<TrashEntry> softDelete(RecordRef ref);
+  Future<void> archiveEventRange(
+    EventSeries series,
+    LocalDate cut,
+    List<String> occurrences,
+  );
   Future<TrashEntry> deleteCategory(String id, {String? replacementId});
-  Future<void> restore(String trashEntryId);
+  Future<Set<String>> restore(String trashEntryId, {int? expectedRevision});
+  Future<void> permanentlyDelete(
+    String trashEntryId, {
+    required int expectedRevision,
+  });
 }
 
 bool isCategoryNameAvailable(
@@ -70,4 +79,13 @@ class StaleRecord implements Exception {
   final String id;
   @override
   String toString() => 'Record is unavailable or revision is stale: $id';
+}
+
+enum TrashProblem implements Exception {
+  expired,
+  alreadyArchived,
+  unavailableParent,
+  seriesChanged,
+  referenced,
+  invalidSchedule,
 }

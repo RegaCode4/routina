@@ -12,6 +12,7 @@ import 'package:routina/presentation/planner/preview_ui.dart';
 import 'package:routina/presentation/planner/notification_settings.dart';
 import 'package:routina/presentation/planner/reminder_ui.dart';
 import 'package:routina/presentation/planner/setup_screens.dart';
+import 'package:routina/presentation/planner/trash_screen.dart';
 
 import 'package:routina/presentation/demo/backup.dart';
 import 'package:routina/presentation/demo/demo_session.dart';
@@ -141,7 +142,14 @@ class DemoProfile extends StatelessWidget {
             'Tempat Sampah',
             icon: Icons.delete_outline,
             subtitle: 'Pulihkan atau hapus item',
-            onTap: () => openDemo<void>(context, DemoTrashScreen(demo)),
+            onTap: () =>
+                openDemo<void>(context, switch (demo.planner.trashWorkspace) {
+                  final workspace? => TrashScreen(
+                    workspace: workspace,
+                    onChanged: () => demo.change(() => demo.revision++),
+                  ),
+                  null => DemoTrashScreen(demo),
+                }),
           ),
           DemoRow(
             'Statistik',

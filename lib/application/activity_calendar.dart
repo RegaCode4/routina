@@ -10,6 +10,8 @@ import 'package:routina/domain/productivity.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/domain/scheduling_engine.dart';
 
+part 'activity_recovery.dart';
+
 typedef ReminderCalendarItem = ({
   String id,
   String title,
@@ -531,6 +533,14 @@ class ActivityCalendar {
     if (!approved.containsAll(warnings)) throw ActivityWarnings(warnings);
     var event = _withWarnings(plan.event, warnings);
     if (plan.branch case final branch?) {
+      if ((await data.trashEntries.all()).any(
+        (entry) =>
+            entry.target.id == branch.series.id &&
+            entry.seriesCut != null &&
+            entry.restoredAt == null,
+      )) {
+        throw TrashProblem.alreadyArchived;
+      }
       await data.eventSeries.save(_shortened(branch.series, branch.cut));
     }
     if (plan.rule case final rule?) {
@@ -591,28 +601,34 @@ class ActivityCalendar {
       if (occurrence.seriesId != null &&
           scope != null &&
           scope != SeriesScope.occurrence) {
-        final branch = _branch(snapshot, occurrence, scope);
-        await data.eventSeries.save(_shortened(branch.series, branch.cut));
-        final removed = snapshot.active.values.where(
+        final series = snapshot.series[occurrence.seriesId];
+        if (series == null || occurrence.recurrenceKey == null) {
+          throw StaleRecord(occurrence.id);
+        }
+        final future = snapshot.active.values.where(
           (row) =>
-              row.seriesId == branch.series.id &&
+              row.seriesId == series.id &&
               row.recurrenceKey != null &&
-              row.recurrenceKey!.compareTo(civilKey(branch.cut)) >= 0 &&
               row.status == ActivityStatus.planned &&
               !_project(row).start.isBefore(current),
         );
-        for (final row in removed) {
-          await data.softDelete((kind: RecordKind.eventOccurrence, id: row.id));
-        }
-        if (occurrence.status == ActivityStatus.planned &&
-            !_project(occurrence).start.isBefore(current) &&
-            !snapshot.active.containsKey(occurrence.id)) {
-          await data.events.save(occurrence);
-          await data.softDelete((
-            kind: RecordKind.eventOccurrence,
-            id: occurrence.id,
-          ));
-        }
+        final branch = _archiveBranch(
+          snapshot,
+          occurrence,
+          scope,
+          series,
+          future,
+        );
+        final removed = future.where(
+          (row) =>
+              scope == SeriesScope.entire ||
+              row.recurrenceKey!.compareTo(occurrence.recurrenceKey!) >= 0,
+        );
+        await data.archiveEventRange(
+          branch.series,
+          LocalDate.parse(civilKey(branch.cut)),
+          removed.map((row) => row.id).toList(),
+        );
       } else {
         if (!snapshot.active.containsKey(occurrence.id)) {
           await data.events.save(occurrence);
@@ -1067,6 +1083,40 @@ class ActivityCalendar {
       }
     }
     throw StateError('Tidak ada kejadian mendatang pada cakupan ini.');
+  }
+
+  _Branch _archiveBranch(
+    _Snapshot snapshot,
+    EventOccurrence selected,
+    SeriesScope scope,
+    EventSeries series,
+    Iterable<EventOccurrence> future,
+  ) {
+    try {
+      return _branch(snapshot, selected, scope);
+    } on StateError {
+      // An exception can remain scheduled beyond the last generated date.
+      final onlyExceptions = future.where(
+        (row) =>
+            scope == SeriesScope.entire ||
+            row.recurrenceKey!.compareTo(selected.recurrenceKey!) >= 0,
+      );
+      if (onlyExceptions.isEmpty) rethrow;
+      final template = _SeriesTemplate.decode(series.template!);
+      final zone = template.availability != EventAvailability.timed
+          ? zones.displayId
+          : series.timeMode == TimeMode.originalZone
+          ? series.zoneId
+          : zones.deviceId;
+      var cut = civilDate(zones.wall(now(), zone));
+      final key = DateTime.parse(selected.recurrenceKey!);
+      if (scope == SeriesScope.following && key.isAfter(cut)) cut = key;
+      final oldEnd = series.endsBefore;
+      if (oldEnd != null && cut.isAfter(DateTime.parse(oldEnd.value))) {
+        cut = DateTime.parse(oldEnd.value);
+      }
+      return _Branch(series, cut);
+    }
   }
 
   _Plan _plan(_Snapshot snapshot, PreviewEvent draft, SeriesScope? scope) {

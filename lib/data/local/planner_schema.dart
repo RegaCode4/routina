@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 8;
+const plannerSchemaVersion = 9;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -385,5 +385,39 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
     await db.execute(
       "ALTER TABLE routines ADD COLUMN cadence_history TEXT NOT NULL DEFAULT '[]'",
     );
+  }
+  if (from < 9 && to >= 9) {
+    await db.execute(
+      'ALTER TABLE trash_entries ADD COLUMN expires_at_us INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'UPDATE trash_entries SET expires_at_us = deleted_at_us + 2592000000000',
+    );
+    await db.execute('ALTER TABLE trash_entries ADD COLUMN series_cut TEXT');
+    await db.execute(
+      'ALTER TABLE trash_entries ADD COLUMN previous_series_end TEXT',
+    );
+    await db.execute('''
+      ALTER TABLE trash_entries ADD COLUMN archive_id TEXT REFERENCES trash_entries(id)
+      ''');
+    await db.execute('CREATE INDEX trash_archive ON trash_entries(archive_id)');
+    await db.execute('''
+      CREATE VIEW record_dependents AS
+      SELECT parent_id, id FROM records WHERE parent_id IS NOT NULL
+      UNION ALL
+      SELECT routine_occurrence_id, id FROM event_occurrences WHERE routine_occurrence_id IS NOT NULL
+      UNION ALL
+      SELECT routine_occurrence_id, id FROM work_sessions WHERE routine_occurrence_id IS NOT NULL
+      ''');
+    await db.execute('DROP VIEW hidden_records');
+    await db.execute('''
+      CREATE VIEW hidden_records AS
+      WITH RECURSIVE hidden(id) AS (
+        SELECT target_id FROM trash_entries WHERE restored_at_us IS NULL AND series_cut IS NULL
+        UNION
+        SELECT d.id FROM record_dependents d JOIN hidden h ON d.parent_id = h.id
+      )
+      SELECT id FROM hidden
+      ''');
   }
 }

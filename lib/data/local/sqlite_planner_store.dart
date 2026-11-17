@@ -7,6 +7,7 @@ import 'package:routina/domain/planner_store.dart';
 import 'package:sqflite/sqflite.dart';
 
 part 'planner_mapping.dart';
+part 'planner_trash.dart';
 
 class SqlitePlannerStore extends _SqliteData implements PlannerStore {
   SqlitePlannerStore._(Database super.db, super.now);
@@ -336,7 +337,11 @@ class _SqliteData implements PlannerData {
         return _softDelete(db, (kind: RecordKind.category, id: id));
       });
 
-  Future<TrashEntry> _softDelete(DatabaseExecutor db, RecordRef ref) async {
+  Future<TrashEntry> _softDelete(
+    DatabaseExecutor db,
+    RecordRef ref, {
+    String? archiveId,
+  }) async {
     final target = await _metadata(db, ref);
     if (target == null) throw StaleRecord(ref.id);
     final entry = await _tombstone(db, ref.id);
@@ -357,14 +362,16 @@ class _SqliteData implements PlannerData {
         }
       }
     }
-    final now = _modifiedAt(target, _now());
+    final deleted = _now().toUtc();
+    final now = _modifiedAt(target, deleted);
     final result = await _save(
       db,
       _trash,
       TrashEntry(
         entry?.metadata ?? RecordMetadata.create(),
         target: ref,
-        deletedAt: now,
+        deletedAt: deleted,
+        archiveId: archiveId,
       ),
       now,
     );
@@ -373,27 +380,58 @@ class _SqliteData implements PlannerData {
   }
 
   @override
-  Future<void> restore(String trashEntryId) => _write((db) async {
-    final row = await _find(db, _trash, trashEntryId, includeDeleted: true);
-    if (row == null) throw StaleRecord(trashEntryId);
-    final entry = _decode(_trash, row);
-    if (entry.restoredAt != null) return;
-    final target = await _metadata(db, entry.target);
-    if (target == null) throw StaleRecord(entry.target.id);
-    final now = _modifiedAt(target, _now());
-    await _save(
+  Future<void> archiveEventRange(
+    EventSeries series,
+    LocalDate cut,
+    List<String> occurrences,
+  ) => _write((db) async {
+    final ref = (kind: RecordKind.eventSeries, id: series.id);
+    final previous = await _tombstone(db, series.id);
+    if (previous != null && previous.restoredAt == null) {
+      throw TrashProblem.alreadyArchived;
+    }
+    final now = _now().toUtc();
+    final entry = await _save(
       db,
       _trash,
       TrashEntry(
-        entry.metadata,
-        target: entry.target,
-        deletedAt: entry.deletedAt,
-        restoredAt: now,
+        previous?.metadata ?? RecordMetadata.create(),
+        target: ref,
+        deletedAt: now,
+        seriesCut: cut,
+        previousSeriesEnd: series.endsBefore,
       ),
       now,
     );
-    await _updateMetadata(db, target, now);
+    await _save(db, _eventSeries, _seriesWithEnd(series, cut), now);
+    for (final id in occurrences) {
+      final member = await _find(db, _event, id, includeDeleted: false);
+      if (member == null ||
+          member.optionalText('series_id') != series.id ||
+          member.status != ActivityStatus.planned) {
+        throw StaleRecord(id);
+      }
+      await _softDelete(db, (
+        kind: RecordKind.eventOccurrence,
+        id: id,
+      ), archiveId: entry.id);
+    }
   });
+
+  @override
+  Future<Set<String>> restore(String trashEntryId, {int? expectedRevision}) =>
+      _write(
+        (db) =>
+            _restoreTrash(db, trashEntryId, expectedRevision, _now().toUtc()),
+      );
+
+  @override
+  Future<void> permanentlyDelete(
+    String trashEntryId, {
+    required int expectedRevision,
+  }) => _write(
+    (db) => _purgeTrash(db, trashEntryId, expectedRevision, _now().toUtc()),
+  );
 
   Future<TrashEntry?> _tombstone(DatabaseExecutor db, String targetId) async {
     final rows = await db.rawQuery(
