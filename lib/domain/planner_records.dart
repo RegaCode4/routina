@@ -156,6 +156,7 @@ class PlannerPreferences {
     this.confirmationCount = 1,
     this.confirmationIntervalMinutes = 30,
     this.backupReminderSince,
+    this.lastBackupAt,
   });
 
   final String? calendarZoneId;
@@ -172,6 +173,7 @@ class PlannerPreferences {
   final int confirmationCount;
   final int confirmationIntervalMinutes;
   final DateTime? backupReminderSince;
+  final DateTime? lastBackupAt;
 
   bool allowsReminder(ReminderKind kind) => reminderTypes[kind] ?? true;
 
@@ -193,6 +195,7 @@ class PlannerPreferences {
     int? confirmationCount,
     int? confirmationIntervalMinutes,
     DateTime? backupReminderSince,
+    DateTime? lastBackupAt,
   }) => PlannerPreferences(
     calendarZoneId: useDeviceZone
         ? null
@@ -216,6 +219,7 @@ class PlannerPreferences {
     backupReminderSince: disableBackupReminder
         ? null
         : backupReminderSince ?? this.backupReminderSince,
+    lastBackupAt: lastBackupAt ?? this.lastBackupAt,
   );
 }
 

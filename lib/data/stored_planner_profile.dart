@@ -1,4 +1,5 @@
 import 'package:routina/application/activity_calendar.dart';
+import 'package:routina/application/backup_workspace.dart';
 import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/local_reminders.dart';
 import 'package:routina/application/planner_preview.dart';
@@ -113,6 +114,12 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
       await _refreshDeviceZone();
       return _calendar();
     },
+    now: _now,
+  );
+
+  @override
+  late final BackupWorkspace backupWorkspace = BackupWorkspace(
+    openStore: _database,
     now: _now,
   );
 

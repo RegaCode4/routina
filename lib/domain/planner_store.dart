@@ -1,4 +1,5 @@
 import 'package:routina/domain/planner_records.dart';
+import 'package:routina/domain/backup.dart';
 
 abstract interface class RecordReader<T extends PlannerRecord> {
   Future<T?> find(String id, {bool includeDeleted = false});
@@ -48,6 +49,7 @@ abstract interface class PlannerData {
     String trashEntryId, {
     required int expectedRevision,
   });
+  Future<BackupSnapshot> readBackup();
 }
 
 bool isCategoryNameAvailable(
@@ -66,6 +68,13 @@ bool isCategoryNameAvailable(
 }
 
 abstract interface class PlannerStore implements PlannerData {
+  int get backupSchemaVersion;
+  Future<void> validateBackup(BackupSnapshot snapshot);
+  Future<void> commitBackup(
+    BackupSnapshot expected,
+    BackupSnapshot replacement,
+  );
+
   /// Called after a successful mutation, outside the SQLite transaction.
   set afterCommit(Future<void> Function()? callback);
 

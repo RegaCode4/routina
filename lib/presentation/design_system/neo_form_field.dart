@@ -48,7 +48,10 @@ class NeoFormField extends StatelessWidget {
       enabled: enabled,
       obscureText: obscureText,
       maxLines: maxLines,
-      keyboardType: keyboardType,
+      keyboardType: obscureText ? TextInputType.visiblePassword : keyboardType,
+      enableSuggestions: !obscureText,
+      autocorrect: !obscureText,
+      enableIMEPersonalizedLearning: !obscureText,
       style: TextStyle(color: enabled ? NeoColors.ink : NeoColors.muted),
       decoration: InputDecoration(
         labelText: labelAbove ? null : label,

@@ -10,6 +10,8 @@ class _Table<T extends PlannerRecord> {
   final _Row Function(T) encode;
   final T Function(RecordMetadata, _Row) decode;
   final String? Function(T)? parent;
+
+  String? parentId(PlannerRecord row) => parent?.call(row as T);
 }
 
 int? _instant(DateTime? value) => value?.microsecondsSinceEpoch;
@@ -176,6 +178,7 @@ String _writePreferences(PlannerPreferences value) => jsonEncode({
   'confirmationCount': value.confirmationCount,
   'confirmationIntervalMinutes': value.confirmationIntervalMinutes,
   'backupReminderSince': value.backupReminderSince?.toIso8601String(),
+  'lastBackupAt': value.lastBackupAt?.toIso8601String(),
   'separateEventStart': true,
 });
 
@@ -197,6 +200,7 @@ PlannerPreferences _readPreferences(String source) {
     backupReminderSince: DateTime.tryParse(
       values['backupReminderSince'] as String? ?? '',
     ),
+    lastBackupAt: DateTime.tryParse(values['lastBackupAt'] as String? ?? ''),
     sessionLimits: _sessionLimits(
       values['minimumSessionMinutes'] as int?,
       values['maximumSessions'] as int?,

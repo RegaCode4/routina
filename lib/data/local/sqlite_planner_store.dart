@@ -2,15 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:routina/data/local/planner_schema.dart';
+import 'package:routina/domain/backup.dart';
+import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:sqflite/sqflite.dart';
 
 part 'planner_mapping.dart';
 part 'planner_trash.dart';
+part 'planner_backup.dart';
 
 class SqlitePlannerStore extends _SqliteData implements PlannerStore {
-  SqlitePlannerStore._(Database super.db, super.now);
+  SqlitePlannerStore._(Database super.db, super.now, this._factory);
+
+  final DatabaseFactory _factory;
+
+  @override
+  int get backupSchemaVersion => plannerSchemaVersion;
 
   static Future<SqlitePlannerStore> open({
     DatabaseFactory? factory,
@@ -27,6 +35,9 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
         singleInstance: false,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
+          if (path == inMemoryDatabasePath) {
+            await db.execute('PRAGMA temp_store = MEMORY');
+          }
           final enabled = Sqflite.firstIntValue(
             await db.rawQuery('PRAGMA foreign_keys'),
           );
@@ -46,7 +57,7 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
         },
       ),
     );
-    return SqlitePlannerStore._(db, now ?? DateTime.now);
+    return SqlitePlannerStore._(db, now ?? DateTime.now, selected);
   }
 
   Database get _database => _executor as Database;
@@ -74,6 +85,47 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
 
   @override
   Future<void> close() => _database.close();
+
+  @override
+  Future<BackupSnapshot> readBackup() =>
+      transaction((data) => data.readBackup());
+
+  @override
+  Future<void> validateBackup(BackupSnapshot snapshot) async {
+    final staging = await SqlitePlannerStore.open(
+      factory: _factory,
+      path: inMemoryDatabasePath,
+    );
+    try {
+      await staging._database.transaction(
+        (data) => _replaceBackup(data, snapshot),
+      );
+    } on BackupIssue {
+      rethrow;
+    } catch (_) {
+      throw BackupIssue.invalidData;
+    } finally {
+      await staging.close();
+    }
+  }
+
+  @override
+  Future<void> commitBackup(
+    BackupSnapshot expected,
+    BackupSnapshot replacement,
+  ) async {
+    await _database.transaction((data) async {
+      if (!(await _readBackup(data)).sameAs(expected)) {
+        throw BackupIssue.staleReview;
+      }
+      await _replaceBackup(data, replacement);
+    });
+    // A notification failure after commit cannot roll back restored data.
+    // LocalReminders reports its own errors and reconciles again on resume.
+    try {
+      await _afterCommit?.call();
+    } catch (_) {}
+  }
 }
 
 class _SqliteData implements PlannerData {
@@ -84,6 +136,9 @@ class _SqliteData implements PlannerData {
   (Object, StackTrace)? _writeFailure;
   bool _changed = false;
   Future<void> Function()? _afterCommit;
+
+  @override
+  Future<BackupSnapshot> readBackup() => _readBackup(_executor);
 
   Future<T> _write<T>(
     Future<T> Function(DatabaseExecutor) action, {
@@ -558,7 +613,7 @@ Future<T> _save<T extends PlannerRecord>(
   final id = value.id;
   final before = await _find(db, table, id, includeDeleted: true);
   final columns = table.encode(value);
-  final parent = table.parent?.call(value);
+  final parent = table.parentId(value);
   final timestamp = before == null
       ? clock.toUtc()
       : _modifiedAt(_readMetadata(before), clock);

@@ -126,6 +126,10 @@ Post-commit SQLite memicu rekonsiliasi pengingat dengan agenda yang memakai atur
 - **PROPOSED** · Skema v9 mengarsipkan cakupan seri mendatang sebagai satu item, menyimpan batas lama serta kejadian tersimpan yang ikut dipindahkan. Pemulihan cakupan mengaktifkan kembali kejadian virtual dan tersimpan. Penghapusan permanen mempertahankan batas seri dan pengecualian tanggal yang diperlukan agar recurrence tidak membangkitkan item. Seri memiliki satu cakupan yang dapat dipulihkan pada satu waktu. Jika versi sebelumnya sudah memotong seri, hanya kejadian yang memiliki arsip tersimpan dapat dipulihkan karena batas lama belum tercatat.
 - **OPEN** · Purge otomatis, definisi bisnis final untuk batas 30 hari, aturan final pemulihan parsial dan penghapusan referensi lintas entitas, serta retensi snapshot statistik setelah penghapusan permanen masih menunggu keputusan. Fase ini membiarkan purge otomatis nonaktif. Statistik memakai data aktif terkini dan menghitung ulang setelah pemulihan.
 
+## Fase 14 · Backup terenkripsi
+
+Ekspor dan pemulihan memakai snapshot SQLite berversi dengan pilihan penggabungan per ID serta commit atomik. Pemilih file dan Share Sheet memberi akses ke penyimpanan yang tersedia di perangkat. Parameter keamanan, aturan kombinasi data, batas aplikasi, serta keputusan yang masih terbuka dicatat untuk review. [Format dan kebijakan backup](BACKUP.md)
+
 ## Result, exception, dan lifecycle
 
 - Use case mengekspresikan hasil yang dapat ditangani sebagai `Success<T>` atau `Failure<T>`. `ReadToday` mempertahankan exception dan stack untuk diagnosis bila port gagal. Tampilan Home memakai pesan Indonesia yang aman dan aksi Coba lagi. Error pemrograman merambat ke handler framework.

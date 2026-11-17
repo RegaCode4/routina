@@ -10,6 +10,7 @@ import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 import 'package:routina/presentation/planner/notification_settings.dart';
+import 'package:routina/presentation/planner/backup_screen.dart';
 import 'package:routina/presentation/planner/reminder_ui.dart';
 import 'package:routina/presentation/planner/setup_screens.dart';
 import 'package:routina/presentation/planner/trash_screen.dart';
@@ -136,7 +137,17 @@ class DemoProfile extends StatelessWidget {
             'Backup & Restore',
             icon: Icons.folder_outlined,
             subtitle: 'Ekspor, pulihkan, dan pengingat',
-            onTap: () => openDemo<void>(context, DemoBackup(demo)),
+            onTap: () =>
+                openDemo<void>(context, switch (demo.planner.backupWorkspace) {
+                  final workspace? => BackupScreen(
+                    workspace: workspace,
+                    onChanged: () async {
+                      await demo.planner.load(PreviewSurface.startup);
+                      demo.change(() => demo.revision++);
+                    },
+                  ),
+                  null => DemoBackup(demo),
+                }),
           ),
           DemoRow(
             'Tempat Sampah',
