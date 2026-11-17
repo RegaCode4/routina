@@ -426,6 +426,10 @@ final _routine = _Table<Routine>(
     'checklist': jsonEncode(value.checklist),
     'preferred_time': value.preferredTime,
     'routine_time_mode': value.timeMode?.name,
+    'cadence_history': jsonEncode([
+      for (final version in value.cadenceHistory)
+        [version.from.value, version.rule],
+    ]),
   },
   (meta, row) => Routine(
     meta,
@@ -435,6 +439,14 @@ final _routine = _Table<Routine>(
     targetAmount: row.optionalNumber('target_amount'),
     targetDuration: row.duration('target_duration_us'),
     frequencyRule: row.optionalText('frequency_rule'),
+    cadenceHistory: [
+      for (final version
+          in jsonDecode(row.text('cadence_history')) as List<dynamic>)
+        RoutineCadence(
+          LocalDate.parse(version[0] as String),
+          version[1] as String?,
+        ),
+    ],
     checklist: _readList(row, 'checklist'),
     preferredTime: row.optionalText('preferred_time'),
     timeMode: row['routine_time_mode'] == null

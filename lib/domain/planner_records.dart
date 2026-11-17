@@ -401,6 +401,13 @@ class WorkSession extends PlannerRecord {
   Duration get scheduledDuration => schedule.duration;
 }
 
+class RoutineCadence {
+  const RoutineCadence(this.from, this.rule);
+
+  final LocalDate from;
+  final String? rule;
+}
+
 class Routine extends PlannerRecord {
   Routine(
     super.metadata, {
@@ -413,7 +420,9 @@ class Routine extends PlannerRecord {
     this.preferredTime,
     this.timeMode,
     List<String> checklist = const [],
-  }) : checklist = List.unmodifiable(checklist);
+    List<RoutineCadence> cadenceHistory = const [],
+  }) : checklist = List.unmodifiable(checklist),
+       cadenceHistory = List.unmodifiable(cadenceHistory);
 
   final String title;
   final RoutineTargetType targetType;
@@ -424,6 +433,7 @@ class Routine extends PlannerRecord {
   final List<String> checklist;
   final String? preferredTime;
   final TimeMode? timeMode;
+  final List<RoutineCadence> cadenceHistory;
 
   RoutineGoal get goal => RoutineGoal(
     targetType,

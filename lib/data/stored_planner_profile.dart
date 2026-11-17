@@ -8,6 +8,7 @@ import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/domain/productivity.dart';
 
 /// Durable settings, activities, tasks and routines.
 class StoredPlannerProfile extends MemoryPlannerPreview {
@@ -31,6 +32,8 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   Future<PlannerStore>? _opening;
   List<Category> _savedCategories = const [];
   List<PreviewEvent> _homeEvents = const [];
+  PreviewEvent? _homeNextEvent;
+  ProductivitySummary? _homeProductivity;
   String _deviceZone = 'UTC';
   int _confirmationDays = 30;
 
@@ -113,7 +116,19 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   @override
   List<PreviewEvent> get homeEntries => List.unmodifiable(_homeEvents);
   @override
+  PreviewEvent? get homeNextEvent => _homeNextEvent;
+  @override
+  ProductivitySummary? get homeProductivity => _homeProductivity;
+  @override
+  Future<ProductivityReport> Function(ProductivityQuery)
+  get productivityReader => _readProductivity;
+  @override
   List<PreviewEvent> get events => [..._homeEvents, ...super.events];
+
+  Future<ProductivityReport> _readProductivity(ProductivityQuery query) async {
+    await _refreshDeviceZone();
+    return (await _calendar()).productivity(query);
+  }
 
   @override
   Future<List<PreviewEvent>> readCalendar(DateTime from, DateTime until) async {
@@ -187,11 +202,10 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     }
     if (surface == PreviewSurface.home) {
       final calendar = await _calendar();
-      final day = today;
-      _homeEvents = await calendar.read(
-        shiftDay(day, -_confirmationDays),
-        shiftDay(day, 32),
-      );
+      final home = await calendar.readHome(_confirmationDays);
+      _homeEvents = home.agenda;
+      _homeNextEvent = home.next;
+      _homeProductivity = home.productivity;
       return;
     }
     await super.load(surface);

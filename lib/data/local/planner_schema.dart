@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 7;
+const plannerSchemaVersion = 8;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -380,5 +380,10 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
         snoozed_until_us INTEGER
       )
       ''');
+  }
+  if (from < 8 && to >= 8) {
+    await db.execute(
+      "ALTER TABLE routines ADD COLUMN cadence_history TEXT NOT NULL DEFAULT '[]'",
+    );
   }
 }

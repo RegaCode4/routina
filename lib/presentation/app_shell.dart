@@ -13,6 +13,7 @@ import 'package:routina/presentation/planner/calendar_screen.dart';
 import 'package:routina/presentation/planner/event_detail.dart';
 import 'package:routina/presentation/planner/event_editor.dart';
 import 'package:routina/presentation/planner/home_screen.dart';
+import 'package:routina/presentation/planner/productivity_statistics.dart';
 import 'package:routina/presentation/planner/preview_ui.dart';
 import 'package:routina/presentation/demo/demo_session.dart';
 import 'package:routina/presentation/demo/demo_widgets.dart';
@@ -176,8 +177,16 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
-  void _stats() =>
-      openDemo<void>(context, DemoStatistics(_demo), route: '/statistik');
+  void _stats() {
+    final reader = widget.repository.productivityReader;
+    openDemo<void>(
+      context,
+      reader == null
+          ? DemoStatistics(_demo)
+          : ProductivityStatistics(read: reader),
+      route: '/statistik',
+    );
+  }
 
   Future<void> _openTask(String id, {String? sessionId}) async {
     final workspace = widget.repository.taskWorkspace;
@@ -306,6 +315,7 @@ class _AppShellState extends State<AppShell> {
               onConfirm: _confirm,
               onCalendar: () => _calendar(widget.repository.today),
               onStats: _stats,
+              onOpenRoutine: _openRoutine,
               onAdd: _openAdd,
             ),
             PlannerCalendar(

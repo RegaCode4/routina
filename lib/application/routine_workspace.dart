@@ -58,12 +58,6 @@ class RoutineView {
       target == 0 ? 0 : (achievedAt(now) / target).clamp(0.0, 1.0).toDouble();
 }
 
-DateTime routineWeekStart(DateTime day, {required bool sundayFirst}) {
-  final date = civilDate(day);
-  final offset = sundayFirst ? date.weekday % 7 : date.weekday - 1;
-  return date.subtract(Duration(days: offset));
-}
-
 class RoutineWorkspace {
   const RoutineWorkspace({
     required this.openStore,
@@ -82,7 +76,7 @@ class RoutineWorkspace {
   CalendarZones get zones => readZones();
   DateTime get today => civilDate(zones.wall(now(), zones.displayId));
   DateTime weekStart(DateTime day) =>
-      routineWeekStart(day, sundayFirst: sundayFirst());
+      civilWeekStart(day, sundayFirst: sundayFirst());
 
   Future<List<RoutineView>> list(DateTime day) async =>
       (await openStore()).transaction((data) async {
@@ -181,6 +175,27 @@ class RoutineWorkspace {
     if (configuration.title.trim().isEmpty || invalid) {
       throw const RoutineIssue('Isi nama dan target rutinitas yang valid.');
     }
+    final previous = await data.routines.find(configuration.id);
+    final history = <RoutineCadence>[...?previous?.cadenceHistory];
+    if (history.isEmpty && previous?.metadata.createdAt != null) {
+      final zone = zones;
+      history.add(
+        RoutineCadence(
+          LocalDate.parse(
+            civilKey(zone.wall(previous!.metadata.createdAt!, zone.displayId)),
+          ),
+          previous.frequencyRule,
+        ),
+      );
+    }
+    if (previous == null ||
+        previous.frequencyRule != configuration.frequencyRule) {
+      final from = LocalDate.parse(civilKey(today));
+      history.removeWhere(
+        (version) => version.from.value.compareTo(from.value) >= 0,
+      );
+      history.add(RoutineCadence(from, configuration.frequencyRule));
+    }
     final saved = await data.routines.save(
       Routine(
         configuration.metadata,
@@ -197,6 +212,7 @@ class RoutineWorkspace {
         checklist: goal.type == RoutineTargetType.checklist ? names : const [],
         categoryId: configuration.categoryId,
         frequencyRule: configuration.frequencyRule,
+        cadenceHistory: history,
         preferredTime: configuration.preferredTime,
         timeMode: configuration.timeMode,
       ),

@@ -5,6 +5,7 @@ import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/domain/productivity.dart';
 
 enum PreviewFixture {
   standard,
@@ -83,6 +84,13 @@ class MemoryPlannerPreview implements PlannerPreviewRepository {
   List<PreviewEvent> get homeEntries => events;
   @override
   bool get usesStoredCalendar => false;
+  @override
+  PreviewEvent? get homeNextEvent => null;
+  @override
+  ProductivitySummary? get homeProductivity => null;
+  @override
+  Future<ProductivityReport> Function(ProductivityQuery)?
+  get productivityReader => null;
   @override
   String get calendarZoneLabel => 'WIB · Asia/Jakarta';
   @override

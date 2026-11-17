@@ -18,6 +18,7 @@ class PlannerHome extends StatefulWidget {
     required this.onCalendar,
     required this.onStats,
     required this.onAdd,
+    this.onOpenRoutine,
     this.revision = 0,
     super.key,
   });
@@ -27,6 +28,7 @@ class PlannerHome extends StatefulWidget {
   final VoidCallback onCalendar;
   final VoidCallback onStats;
   final VoidCallback onAdd;
+  final void Function(String id, DateTime day)? onOpenRoutine;
   final int revision;
 
   @override
@@ -49,7 +51,6 @@ class _PlannerHomeState extends State<PlannerHome> {
   Widget build(BuildContext context) {
     final profile = widget.repository.profile!;
     final name = profile.name.trim();
-    final date = widget.repository.today;
     return ListView(
       padding: const EdgeInsets.fromLTRB(
         NeoSpace.page,
@@ -64,9 +65,16 @@ class _PlannerHomeState extends State<PlannerHome> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    dateLabel(date, long: true, year: true).toUpperCase(),
-                    style: NeoType.badge.copyWith(color: NeoColors.muted),
+                  FutureBuilder<void>(
+                    future: _load,
+                    builder: (context, _) => Text(
+                      dateLabel(
+                        widget.repository.today,
+                        long: true,
+                        year: true,
+                      ).toUpperCase(),
+                      style: NeoType.badge.copyWith(color: NeoColors.muted),
+                    ),
                   ),
                   const SizedBox(height: NeoSpace.xxs),
                   Text(
@@ -142,9 +150,15 @@ class _PlannerHomeState extends State<PlannerHome> {
                 ],
               );
             }
+            final statistics = widget.repository.homeProductivity;
+            final today = statistics?.dates.start ?? widget.repository.today;
             return _agenda(
               profile,
-              DailyPreview(widget.repository.homeEntries, date),
+              DailyPreview(
+                widget.repository.homeEntries,
+                dateOnly(today),
+                tally: statistics?.tally,
+              ),
             );
           },
         ),
@@ -180,15 +194,22 @@ class _PlannerHomeState extends State<PlannerHome> {
                   entry.start.isBefore(widget.repository.today)),
         )
         .toList();
-    final next = daily.next;
+    final next = widget.repository.usesStoredCalendar
+        ? widget.repository.homeNextEvent
+        : daily.next;
+    final routineTargets =
+        widget.repository.homeProductivity?.history
+            .where((item) => item.isUnscheduledTarget)
+            .toList() ??
+        const [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _HomeKpis(daily: daily, onStats: widget.onStats),
         const SizedBox(height: NeoSpace.page),
-        if (next != null) ...[
-          const Text('KEGIATAN TERDEKAT', style: NeoType.badge),
-          const SizedBox(height: NeoSpace.xs),
+        const Text('KEGIATAN TERDEKAT', style: NeoType.badge),
+        const SizedBox(height: NeoSpace.xs),
+        if (next != null)
           ActivityCard(
             title: next.title,
             time: dateOnly(next.start) == widget.repository.today
@@ -196,9 +217,10 @@ class _PlannerHomeState extends State<PlannerHome> {
                 : '${dateLabel(next.start)} · ${eventTime(next)}',
             highlighted: true,
             onTap: () => widget.onOpen(next),
-          ),
-          const SizedBox(height: NeoSpace.md),
-        ],
+          )
+        else
+          const Text('Belum ada kegiatan mendatang.'),
+        const SizedBox(height: NeoSpace.md),
         if (widget.repository.localReminders case final service?) ...[
           NotificationStatusNotice(service),
           ListenableBuilder(
@@ -288,7 +310,21 @@ class _PlannerHomeState extends State<PlannerHome> {
             },
             child: const Text('Konfirmasi tanggal sebelumnya'),
           ),
-        if (daily.agenda.isEmpty)
+        if (routineTargets.isNotEmpty) ...[
+          const Text('Target rutinitas hari ini', style: NeoType.section),
+          const SizedBox(height: NeoSpace.xs),
+          for (final target in routineTargets)
+            Padding(
+              padding: const EdgeInsets.only(bottom: NeoSpace.xs),
+              child: ActivityCard(
+                title: target.title,
+                time: 'Target harian',
+                onTap: () =>
+                    widget.onOpenRoutine?.call(target.routineId!, target.day),
+              ),
+            ),
+        ],
+        if (daily.agenda.isEmpty && routineTargets.isEmpty)
           PreviewNotice(
             title: 'Agenda masih kosong',
             message: 'Tambahkan kegiatan, tugas, atau rutinitas untuk memulai.',
@@ -298,7 +334,7 @@ class _PlannerHomeState extends State<PlannerHome> {
               onPressed: widget.onAdd,
             ),
           )
-        else ...[
+        else if (daily.agenda.isNotEmpty) ...[
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -479,7 +515,7 @@ class _HomeKpis extends StatelessWidget {
               runSpacing: NeoSpace.xs,
               children: [
                 Text(
-                  '${(progress * 100).round()}%',
+                  completionPercentage(progress),
                   style: NeoType.metric.copyWith(
                     fontSize: narrow || enlarged ? 42 : 58,
                   ),

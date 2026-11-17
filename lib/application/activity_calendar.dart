@@ -6,6 +6,7 @@ import 'package:routina/application/planner_preview.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/planner_store.dart';
+import 'package:routina/domain/productivity.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/domain/scheduling_engine.dart';
 
@@ -139,6 +140,300 @@ class ActivityCalendar {
       civilTime(from),
       civilTime(until),
     );
+    return _presentAgenda(store, snapshot, source);
+  }
+
+  Future<
+    ({
+      List<PreviewEvent> agenda,
+      ProductivitySummary productivity,
+      PreviewEvent? next,
+    })
+  >
+  readHome(int previousDays) => store.transaction((data) async {
+    final calendar = await withLatestProfile(data);
+    final current = now().toUtc();
+    final day = civilDate(
+      calendar.zones.wall(current, calendar.zones.displayId),
+    );
+    final snapshot = await calendar._snapshot(data);
+    final rows = await calendar._entries(
+      data,
+      snapshot,
+      day.subtract(Duration(days: previousDays)),
+      day.add(const Duration(days: 32)),
+    );
+    final dates = ReportingDates(day, day.add(const Duration(days: 1)));
+    final items = await calendar._productivityItems(data, snapshot, [
+      dates,
+    ], rows);
+    final upcoming = rows.where((row) => _upcomingEvent(row, current)).toList()
+      ..sort(_compareStarts);
+    final next =
+        upcoming.firstOrNull ??
+        await calendar._nextEvent(data, snapshot, current);
+    return (
+      agenda: await calendar._presentAgenda(data, snapshot, rows),
+      productivity: ProductivitySummary(
+        dates,
+        items,
+        const ProductivityFilter(),
+      ),
+      next: next == null
+          ? null
+          : calendar._present(next, snapshot.series, current),
+    );
+  });
+
+  Future<ProductivityReport> productivity(
+    ProductivityQuery query,
+  ) => store.transaction((data) async {
+    final calendar = await withLatestProfile(data);
+    final today = civilDate(
+      calendar.zones.wall(now(), calendar.zones.displayId),
+    );
+    final sundayFirst = calendar.profile?.sundayFirst ?? false;
+    final windows = ProductivityWindows(query, today, sundayFirst: sundayFirst);
+    final ranges = [
+      windows.selected,
+      ?windows.comparison,
+    ].where((range) => !range.isEmpty).toList();
+    final snapshot = await calendar._snapshot(data);
+    final rows = [
+      for (final range in ranges)
+        ...await calendar._entries(data, snapshot, range.start, range.until),
+    ];
+    return ProductivityReport(
+      windows: windows,
+      today: today,
+      zone: calendar.zones.displayId,
+      sundayFirst: sundayFirst,
+      categories: calendar.categories,
+      filter: query.filter,
+      items: await calendar._productivityItems(data, snapshot, ranges, rows),
+    );
+  });
+
+  Future<List<ProductivityItem>> _productivityItems(
+    PlannerData data,
+    _Snapshot snapshot,
+    List<ReportingDates> ranges,
+    List<_Entry> rows,
+  ) async {
+    final days = {for (final range in ranges) ...range.days};
+    final routines = await data.routines.all();
+    final occurrences = await data.routineOccurrences.all();
+    final allOccurrences = await data.routineOccurrences.all(
+      includeDeleted: true,
+    );
+    final byId = {for (final row in allOccurrences) row.id: row};
+    final targets = {
+      for (final row in occurrences) (row.routineId, row.day.value): row,
+    };
+    final recordedDays = {
+      for (final row in allOccurrences) (row.routineId, row.day.value),
+    };
+    final routineDays = <(String, String)>{};
+    final items = <ProductivityItem>[];
+    for (final routine in routines) {
+      final createdAt = routine.metadata.createdAt;
+      final history = routine.cadenceHistory.isNotEmpty || createdAt == null
+          ? routine.cadenceHistory
+          : [
+              RoutineCadence(
+                LocalDate.parse(
+                  civilKey(zones.wall(createdAt, zones.displayId)),
+                ),
+                routine.frequencyRule,
+              ),
+            ];
+      for (final day in days) {
+        final key = (routine.id, civilKey(day));
+        final occurrence = targets[key];
+        final virtual =
+            occurrence == null &&
+            !recordedDays.contains(key) &&
+            _matchesCadence(history, day);
+        if (occurrence == null && !virtual) continue;
+        if (occurrence?.status != ActivityStatus.cancelled) {
+          routineDays.add(key);
+        }
+        items.add(
+          ProductivityItem(
+            id: occurrence?.id ?? '${routine.id}:${key.$2}',
+            kind: ProductivityKind.routine,
+            title: routine.title,
+            day: day,
+            status: occurrence?.status ?? ActivityStatus.planned,
+            categoryId: routine.categoryId,
+            routineId: routine.id,
+            isUnscheduledTarget: occurrence == null,
+          ),
+        );
+      }
+    }
+
+    final origins = {for (final row in snapshot.all) row.id: row};
+    for (final row in rows) {
+      final time = zones.wall(row.start, zones.displayId);
+      final day = civilDate(time);
+      if (!days.contains(day)) continue;
+      if (row.event case final event?) {
+        // An approved replacement keeps its own date and status. Only an
+        // existing target for the related routine on that date absorbs it.
+        final related = _originRoutine(event, origins, byId);
+        final linked =
+            event.routineOccurrenceId != null ||
+            (related != null && routineDays.contains((related, civilKey(day))));
+        items.add(
+          ProductivityItem(
+            id: row.id,
+            title: row.title,
+            kind: ProductivityKind.event,
+            day: day,
+            time: row.allDay ? null : time,
+            status: event.status,
+            categoryId: event.categoryId,
+            isCalendarBlock: linked,
+          ),
+        );
+      } else if (row.other case final task?
+          when task.kind == CalendarEntryKind.deadline) {
+        items.add(
+          ProductivityItem(
+            id: task.obligationId,
+            title: task.title,
+            kind: ProductivityKind.task,
+            day: day,
+            time: time,
+            status: task.status,
+            categoryId: task.categoryId,
+          ),
+        );
+      }
+    }
+    return items;
+  }
+
+  bool _matchesCadence(List<RoutineCadence> history, DateTime date) {
+    final key = civilKey(date);
+    final rule = history.reversed
+        .where((version) => version.from.value.compareTo(key) <= 0)
+        .firstOrNull
+        ?.rule;
+    if (rule == null) return false;
+    final fields = rule.split(';');
+    if (fields.first != 'FREQ=DAILY' && fields.first != 'FREQ=WEEKLY') {
+      return false;
+    }
+    final byDay = fields
+        .where((field) => field.startsWith('BYDAY='))
+        .firstOrNull;
+    if (byDay == null) return fields.first == 'FREQ=DAILY';
+    const weekdays = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+    return byDay
+        .substring('BYDAY='.length)
+        .split(',')
+        .contains(weekdays[date.weekday - 1]);
+  }
+
+  String? _originRoutine(
+    EventOccurrence event,
+    Map<String, EventOccurrence> origins,
+    Map<String, RoutineOccurrence> occurrences,
+  ) {
+    final visited = <String>{};
+    for (
+      EventOccurrence? row = event;
+      row != null && visited.add(row.id);
+      row = origins[row.supersedesId]
+    ) {
+      if (occurrences[row.routineOccurrenceId] case final occurrence?) {
+        return occurrence.routineId;
+      }
+    }
+    return null;
+  }
+
+  static bool _upcomingEvent(_Entry row, DateTime now) =>
+      row.event?.status == ActivityStatus.planned && row.start.isAfter(now);
+
+  static int _compareStarts(_Entry a, _Entry b) {
+    final start = a.start.compareTo(b.start);
+    return start == 0 ? a.id.compareTo(b.id) : start;
+  }
+
+  Future<_Entry?> _nextEvent(
+    PlannerData data,
+    _Snapshot snapshot,
+    DateTime now,
+  ) async {
+    final routineIds = (await data.routineOccurrences.all())
+        .map((row) => row.id)
+        .toSet();
+    _Entry? next;
+    void consider(_Entry row) {
+      final existing = next;
+      if (_upcomingEvent(row, now) &&
+          (existing == null || _compareStarts(row, existing) < 0)) {
+        next = row;
+      }
+    }
+
+    for (final event in snapshot.active.values) {
+      if (event.routineOccurrenceId == null ||
+          routineIds.contains(event.routineOccurrenceId)) {
+        consider(_project(event));
+      }
+    }
+    final keys = {
+      for (final row in snapshot.all)
+        if (row.seriesId != null) (row.seriesId, row.recurrenceKey),
+    };
+    for (final series in snapshot.series.values) {
+      if (series.template == null) continue;
+      final template = _SeriesTemplate.decode(series.template!);
+      if (template.routineOccurrenceId != null &&
+          !routineIds.contains(template.routineOccurrenceId)) {
+        continue;
+      }
+      final rule = EventRecurrence.decode(series.recurrenceRule);
+      final zone = template.availability != EventAvailability.timed
+          ? zones.displayId
+          : series.timeMode == TimeMode.originalZone
+          ? series.zoneId
+          : zones.deviceId;
+      final from = civilDate(zones.wall(now, zone));
+      final cutoff = series.endsBefore == null
+          ? DateTime.utc(10000)
+          : DateTime.parse(series.endsBefore!.value);
+      final known = next;
+      final lastRelevant = known == null
+          ? cutoff
+          : civilDate(
+              zones.wall(known.start, zone),
+            ).add(const Duration(days: 1));
+      final until = cutoff.isBefore(lastRelevant) ? cutoff : lastRelevant;
+      for (final day in rule.dates(template.start, from, until)) {
+        final key = civilKey(day);
+        if (keys.contains((series.id, key)) ||
+            template.excluded.contains(key)) {
+          continue;
+        }
+        final candidate = _project(template.occurrence(series, day, zones));
+        if (!_upcomingEvent(candidate, now)) continue;
+        consider(candidate);
+        break;
+      }
+    }
+    return next;
+  }
+
+  Future<List<PreviewEvent>> _presentAgenda(
+    PlannerData data,
+    _Snapshot snapshot,
+    List<_Entry> source,
+  ) async {
     final current = now().toUtc();
     final futureSessions = source.where(
       (row) =>
@@ -155,7 +450,7 @@ class ActivityCalendar {
           .map((row) => row.end)
           .reduce((a, b) => a.isAfter(b) ? a : b);
       final busy = await _paddedEntries(
-        store,
+        data,
         snapshot,
         first,
         last,
@@ -598,6 +893,10 @@ class ActivityCalendar {
     for (final series in snapshot.series.values) {
       if (series.template == null) continue;
       final template = _SeriesTemplate.decode(series.template!);
+      if (template.routineOccurrenceId != null &&
+          !visibleRoutineIds.contains(template.routineOccurrenceId)) {
+        continue;
+      }
       final rule = EventRecurrence.decode(series.recurrenceRule);
       final zone = series.timeMode == TimeMode.originalZone
           ? series.zoneId

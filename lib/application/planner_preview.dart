@@ -4,6 +4,7 @@ import 'package:routina/application/task_workspace.dart';
 import 'package:routina/domain/event_recurrence.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
+import 'package:routina/domain/productivity.dart';
 
 enum PreviewSurface { startup, home, calendar }
 
@@ -21,6 +22,10 @@ abstract interface class PlannerPreviewRepository {
   int get onboardingStep;
   List<PreviewEvent> get events;
   List<PreviewEvent> get homeEntries;
+  PreviewEvent? get homeNextEvent;
+  ProductivitySummary? get homeProductivity;
+  Future<ProductivityReport> Function(ProductivityQuery)?
+  get productivityReader;
   List<Category> get categories;
   bool get usesStoredCalendar;
   TaskWorkspace? get taskWorkspace;
@@ -108,16 +113,34 @@ List<ScheduleWarning> previewWarnings(
 }
 
 class DailyPreview {
-  DailyPreview(List<PreviewEvent> entries, DateTime day)
-    : agenda =
-          entries
-              .where(
-                (entry) =>
-                    entry.state != PreviewEventState.trashed &&
-                    appearsOn(entry, day),
-              )
-              .toList()
-            ..sort((a, b) => a.start.compareTo(b.start)) {
+  DailyPreview(
+    List<PreviewEvent> entries,
+    DateTime day, {
+    CompletionTally? tally,
+  }) : agenda =
+           entries
+               .where(
+                 (entry) =>
+                     entry.state != PreviewEventState.trashed &&
+                     appearsOn(entry, day),
+               )
+               .toList()
+             ..sort((a, b) => a.start.compareTo(b.start)) {
+    this.tally = tally ?? _previewTally(day);
+    final upcoming =
+        entries
+            .where(
+              (entry) =>
+                  entry.kind == PreviewKind.activity &&
+                  entry.state == PreviewEventState.upcoming &&
+                  !civilTime(entry.start).isBefore(civilDate(day)),
+            )
+            .toList()
+          ..sort((a, b) => a.start.compareTo(b.start));
+    next = upcoming.firstOrNull;
+  }
+
+  CompletionTally _previewTally(DateTime day) {
     final obligations = <String, PreviewEvent>{};
     for (final entry in agenda) {
       if (entry.kind == PreviewKind.session ||
@@ -133,27 +156,19 @@ class DailyPreview {
         obligations[id] = entry;
       }
     }
-    total = obligations.length;
-    completed = obligations.values
-        .where((entry) => entry.state == PreviewEventState.done)
-        .length;
-    final upcoming =
-        entries
-            .where(
-              (entry) =>
-                  entry.kind == PreviewKind.activity &&
-                  entry.state == PreviewEventState.upcoming &&
-                  !civilTime(entry.start).isBefore(civilDate(day)),
-            )
-            .toList()
-          ..sort((a, b) => a.start.compareTo(b.start));
-    next = upcoming.firstOrNull;
+    return CompletionTally(
+      total: obligations.length,
+      completed: obligations.values
+          .where((entry) => entry.state == PreviewEventState.done)
+          .length,
+    );
   }
 
   final List<PreviewEvent> agenda;
-  late final int total;
-  late final int completed;
+  late final CompletionTally tally;
   late final PreviewEvent? next;
-  int get open => total - completed;
-  double? get progress => total == 0 ? null : completed / total;
+  int get total => tally.total;
+  int get completed => tally.completed;
+  int get open => tally.open;
+  double? get progress => tally.ratio;
 }

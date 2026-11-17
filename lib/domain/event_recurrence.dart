@@ -72,6 +72,13 @@ class EventRecurrence {
 
 DateTime civilDate(DateTime value) =>
     DateTime.utc(value.year, value.month, value.day);
+
+DateTime civilWeekStart(DateTime value, {required bool sundayFirst}) {
+  final day = civilDate(value);
+  final offset = sundayFirst ? day.weekday % 7 : day.weekday - 1;
+  return day.subtract(Duration(days: offset));
+}
+
 DateTime civilTime(DateTime value) => DateTime.utc(
   value.year,
   value.month,

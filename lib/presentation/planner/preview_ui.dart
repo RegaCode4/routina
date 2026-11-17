@@ -44,6 +44,16 @@ String dateLabel(DateTime date, {bool year = false, bool long = false}) =>
 String clockLabel(int minutes) =>
     '${(minutes ~/ 60).toString().padLeft(2, '0')}.${(minutes % 60).toString().padLeft(2, '0')}';
 
+String decimalMetric(double value) {
+  final tenths = (value * 10).round();
+  return tenths % 10 == 0
+      ? '${tenths ~/ 10}'
+      : '${tenths ~/ 10},${tenths % 10}';
+}
+
+String completionPercentage(double? value) =>
+    value == null ? 'Tidak Ada Aktivitas' : '${decimalMetric(value * 100)}%';
+
 String eventTime(PreviewEvent event) {
   if (event.kind == PreviewKind.routine && event.allDay) {
     return 'Progres rutinitas';
