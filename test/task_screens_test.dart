@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -21,10 +22,35 @@ Future<void> settle(WidgetTester tester) async {
 }
 
 Future<void> tap(WidgetTester tester, Finder widget) async {
+  for (var attempt = 0; attempt < 3 && widget.evaluate().isEmpty; attempt++) {
+    await settle(tester);
+  }
+  expect(widget, findsOneWidget);
   await tester.ensureVisible(widget);
   await tester.tap(widget);
   await settle(tester);
 }
+
+Future<T?> readStore<T>(WidgetTester tester, Future<T> Function() read) =>
+    tester.runAsync(() async {
+      var finished = false;
+      final result = read().timeout(const Duration(seconds: 5)).whenComplete(
+        () {
+          finished = true;
+        },
+      );
+      // Widget-initiated SQLite transactions resume on the fake frame clock.
+      // Keep pumping while the independent real-async assertion waits on them.
+      Future<void> pumpPendingFrames() async {
+        while (!finished) {
+          await tester.pump(const Duration(milliseconds: 16));
+          await Future<void>.delayed(const Duration(milliseconds: 16));
+        }
+      }
+
+      final (value, _) = await (result, pumpPendingFrames()).wait;
+      return value;
+    });
 
 void main() {
   late Directory directory;
@@ -115,11 +141,11 @@ void main() {
         ),
       );
       await tap(tester, find.text('Simpan tugas'));
-      final row = (await tester.runAsync(store.tasks.all))!.single;
+      final row = (await readStore(tester, store.tasks.all))!.single;
       expect(row.title, 'Tugas dari Quick Add');
       expect(row.deadline!.instant, DateTime.utc(2026, 11, 17, 12));
       expect(
-        (await tester.runAsync(store.subtasks.all))!.single.title,
+        (await readStore(tester, store.subtasks.all))!.single.title,
         'Langkah pertama',
       );
       expect(find.text('Tugas dari Quick Add'), findsOneWidget);
@@ -167,18 +193,21 @@ void main() {
       await tap(tester, find.text('Siapkan grafik'));
       expect(find.text('Checklist 100%'), findsOneWidget);
       expect(
-        (await tester.runAsync(() => store.tasks.find(task.id)))!.status,
+        (await readStore(tester, () => store.tasks.find(task.id)))!.status,
         ActivityStatus.planned,
       );
       await tap(tester, find.text('Tandai Tugas Selesai'));
       expect(find.text('Selesai, pertahankan sesi'), findsOneWidget);
       await tap(tester, find.text('Selesai, batalkan sesi mendatang'));
       expect(
-        (await tester.runAsync(() => store.tasks.find(task.id)))!.status,
+        (await readStore(tester, () => store.tasks.find(task.id)))!.status,
         ActivityStatus.completed,
       );
       expect(
-        (await tester.runAsync(() => store.workSessions.find(work.id)))!.status,
+        (await readStore(
+          tester,
+          () => store.workSessions.find(work.id),
+        ))!.status,
         ActivityStatus.cancelled,
       );
     },

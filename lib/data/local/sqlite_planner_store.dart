@@ -19,7 +19,7 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
   final DatabaseFactory _factory;
 
   @override
-  int get backupSchemaVersion => plannerSchemaVersion;
+  int get backupSchemaVersion => plannerBackupSchemaVersion;
 
   static Future<SqlitePlannerStore> open({
     DatabaseFactory? factory,
@@ -128,7 +128,19 @@ class SqlitePlannerStore extends _SqliteData implements PlannerStore {
         throw BackupIssue.staleReview;
       }
       if (current.sameAs(replacement)) return false;
+      final retainedClocks = <Map<String, Object?>>[];
+      for (final clock in await data.query('routine_timer_clocks')) {
+        final id = clock['occurrence_id'];
+        final local = current.entities[id]!;
+        final incoming = replacement.entities[id];
+        if (incoming != null && incoming.sameAs(local)) {
+          retainedClocks.add(clock);
+        }
+      }
       await _replaceBackup(data, replacement);
+      for (final clock in retainedClocks) {
+        await data.insert('routine_timer_clocks', clock);
+      }
       return true;
     });
     // A notification failure after commit cannot roll back restored data.
@@ -266,15 +278,22 @@ class _SqliteData implements PlannerData {
 
   @override
   Future<List<RoutineTimer>> routineTimers() async => [
-    for (final row in await _executor.query(
-      'routine_timers',
-      where: _visibleRoutineData,
-    ))
+    for (final row in await _executor.rawQuery('''
+      SELECT timer.*, clock.boot_count, clock.uptime_us FROM routine_timers timer
+      LEFT JOIN routine_timer_clocks clock USING (occurrence_id)
+      WHERE timer.$_visibleRoutineData
+    '''))
       RoutineTimer(
         id: row.text('id'),
         occurrenceId: row.text('occurrence_id'),
         accumulated: row.duration('accumulated_us')!,
         runningSince: row.optionalInstant('running_since_us'),
+        startedOnDevice: row['boot_count'] == null
+            ? null
+            : (
+                bootCount: row.number('boot_count'),
+                uptimeUs: row.number('uptime_us'),
+              ),
       ),
   ];
 
@@ -287,6 +306,14 @@ class _SqliteData implements PlannerData {
       'accumulated_us': timer.accumulated.inMicroseconds,
       'running_since_us': _instant(timer.runningSince),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    if (timer.startedOnDevice case final stamp?
+        when timer.runningSince != null) {
+      await db.insert('routine_timer_clocks', {
+        'occurrence_id': timer.occurrenceId,
+        'boot_count': stamp.bootCount,
+        'uptime_us': stamp.uptimeUs,
+      });
+    }
   });
 
   @override

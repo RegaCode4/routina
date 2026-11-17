@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -58,15 +59,80 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  Future<void> mount(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(390, 844);
+  Future<void> mount(
+    WidgetTester tester, {
+    bool small = false,
+    bool routines = true,
+  }) async {
+    tester.view.physicalSize = small
+        ? const Size(320, 640)
+        : const Size(390, 844);
     tester.view.devicePixelRatio = 1;
+    if (small) tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpWidget(RoutinaApp(repository: repository));
     await settle(tester);
-    await tap(tester, find.bySemanticsLabel(RegExp(r'^Rutinitas, Tab')));
+    if (routines) {
+      await tap(tester, find.bySemanticsLabel(RegExp(r'^Rutinitas, Tab')));
+    }
   }
+
+  testWidgets('main app tabs stay labeled and navigable at 320 dp and 200%', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await mount(tester, small: true, routines: false);
+    for (final tab in [
+      'Home',
+      'Kalender',
+      'To-Do List',
+      'Rutinitas',
+      'Profil',
+    ]) {
+      final target = find.bySemanticsLabel(RegExp('^$tab, Tab'));
+      expect(target, findsOneWidget);
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+      await tap(tester, target);
+      expect(
+        tester
+            .getSemantics(target)
+            .getSemanticsData()
+            .flagsCollection
+            .isSelected,
+        Tristate.isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    }
+    semantics.dispose();
+  });
+
+  testWidgets('scaled timer exposes elapsed duration with spoken units', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final routine = (await tester.runAsync(
+      () => repository.routineWorkspace.save(
+        Routine(
+          RecordMetadata.create(),
+          title: 'Rutinitas dengan nama panjang untuk menguji ruang',
+          targetType: RoutineTargetType.duration,
+          targetDuration: const Duration(minutes: 2),
+          frequencyRule: 'FREQ=DAILY',
+        ),
+      ),
+    ))!;
+    await mount(tester, small: true);
+    await tap(tester, find.text(routine.title));
+    final duration = tester.getSemantics(
+      find.bySemanticsLabel('Durasi aktual sesi'),
+    );
+    expect(duration.value, '0 jam 0 menit 0 detik');
+    expect(find.byTooltip('Pilih tanggal rutinitas'), findsOneWidget);
+    semantics.dispose();
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('Quick Add preserves routine name, target and frequency', (
     tester,

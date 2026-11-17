@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:routina/application/activity_calendar.dart';
+import 'package:routina/application/backup_workspace.dart';
 import 'package:routina/application/calendar_zones.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/application/routine_workspace.dart';
 import 'package:routina/data/local/planner_schema.dart';
 import 'package:routina/data/local/sqlite_planner_store.dart';
+import 'package:routina/domain/backup.dart';
 import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -64,6 +66,109 @@ void main() {
       targetDuration: const Duration(minutes: 20),
     ),
   );
+
+  test('same-boot timer survives clock jumps, reopen, and backup', () async {
+    const minute = Duration.microsecondsPerMinute;
+    TimerClockSample clock = (bootCount: 7, uptimeUs: minute);
+    workspace = RoutineWorkspace(
+      openStore: () async => database,
+      openCalendar: () async => calendar(),
+      readZones: () => zones,
+      sundayFirst: () => sundayFirst,
+      now: () => now,
+      readTimerClock: () async => clock,
+    );
+    final routine = await duration();
+    final day = workspace.today;
+    await workspace.start(routine.id, day);
+    await database.close();
+    await open();
+
+    now = date(17, 9);
+    zones = CalendarZones(deviceZoneId: 'Asia/Jakarta');
+    clock = (bootCount: 7, uptimeUs: 6 * minute);
+    final first = (await workspace.read(routine.id, day))!;
+    expect(first.actualAt(now), const Duration(minutes: 5));
+    expect(first.goalReachedAt(now), isFalse);
+    final goal = (await workspace.reconcileGoals()).single;
+    expect(goal.reachedAt, isNull);
+    expect(goal.dueAt, now.add(const Duration(minutes: 15)));
+    final aligned = (await database.routineTimers()).single;
+    expect(aligned.runningSince, now.subtract(const Duration(minutes: 5)));
+    expect(
+      aligned.elapsedAt(now.add(const Duration(minutes: 1)), (
+        bootCount: 8,
+        uptimeUs: minute,
+      )),
+      const Duration(minutes: 6),
+    );
+
+    await database.profiles.save(
+      Profile(RecordMetadata.create(), onboardingCompleted: true),
+    );
+    final backup = BackupWorkspace(
+      openStore: () async => database,
+      now: () => now,
+      readTimerClock: () async => clock,
+    );
+    final encrypted = await backup.export('test-password');
+    final verified = await backup.openEncrypted(encrypted, 'test-password');
+    final snapshot = verified.archive.snapshot;
+    expect(snapshot.schemaVersion, plannerBackupSchemaVersion);
+    expect(snapshot.entities[first.occurrence!.id]!.timer, {
+      'occurrence_id': first.occurrence!.id,
+      'id': first.timer!.id,
+      'accumulated_us': 5 * minute,
+      'running_since_us': null,
+    });
+    expect((await database.routineTimers()).single.startedOnDevice, isNotNull);
+
+    final local = await database.readBackup();
+    final merged = BackupSnapshot(local.schemaVersion, [
+      for (final entity in local.entities.values)
+        if (entity.kind == RecordKind.profile)
+          BackupEntity(
+            record: entity.record,
+            data: {...entity.data, 'name': 'Profil dari backup'},
+          )
+        else
+          entity,
+    ]);
+    await database.commitBackup(local, merged);
+    expect(
+      (await database.routineTimers()).single.startedOnDevice,
+      first.timer!.startedOnDevice,
+    );
+
+    now = date(16, 7);
+    clock = (bootCount: 7, uptimeUs: 10 * minute);
+    await workspace.pause(first.timer!);
+    final paused = (await workspace.read(routine.id, day))!.timer!;
+    expect(paused.accumulated, const Duration(minutes: 9));
+    expect(paused.startedOnDevice, isNull);
+    clock = (bootCount: 7, uptimeUs: 40 * minute);
+    await workspace.start(routine.id, day, resumeId: paused.id);
+    final running = (await database.routineTimers()).single;
+    expect(
+      running.elapsedAt(now.add(const Duration(minutes: 2)), (
+        bootCount: 8,
+        uptimeUs: minute,
+      )),
+      const Duration(minutes: 11),
+    );
+    clock = (bootCount: 7, uptimeUs: 51 * minute);
+    await Future.wait([workspace.stop(running), workspace.stop(running)]);
+    expect(
+      (await database.timeLogs.all()).single.actualDuration,
+      const Duration(minutes: 20),
+    );
+    expect(await database.routineTimers(), isEmpty);
+    expect(
+      (await database.routineOccurrences.all()).single.status,
+      ActivityStatus.planned,
+    );
+    expect((await database.routineGoalEvents()).single.reachedAt, now);
+  });
 
   test(
     'the date filter reads historical cadence and suppresses deleted occurrences',

@@ -482,24 +482,61 @@ class RoutineOccurrence extends PlannerRecord {
   final RoutineGoal? goal;
 }
 
+/// Time since Android boot, including time spent in deep sleep.
+typedef TimerClockSample = ({int bootCount, int uptimeUs});
+
 class RoutineTimer {
   const RoutineTimer({
     required this.id,
     required this.occurrenceId,
     this.accumulated = Duration.zero,
     this.runningSince,
+    this.startedOnDevice,
   });
 
   final String id;
   final String occurrenceId;
   final Duration accumulated;
   final DateTime? runningSince;
+  final TimerClockSample? startedOnDevice;
 
-  Duration elapsedAt(DateTime now) {
+  Duration? _elapsedOnDevice(TimerClockSample? clock) {
+    final start = startedOnDevice;
+    if (start == null ||
+        clock == null ||
+        start.bootCount != clock.bootCount ||
+        clock.uptimeUs < start.uptimeUs) {
+      return null;
+    }
+    return Duration(microseconds: clock.uptimeUs - start.uptimeUs);
+  }
+
+  Duration elapsedAt(DateTime now, [TimerClockSample? clock]) {
     final since = runningSince;
-    return since == null || now.isBefore(since)
+    if (since == null) return accumulated;
+    final measured = _elapsedOnDevice(clock);
+    if (measured != null) return accumulated + measured;
+    return now.isBefore(since)
         ? accumulated
         : accumulated + now.difference(since);
+  }
+
+  /// Keeps the wall-clock fallback aligned with elapsed time observed in this boot.
+  RoutineTimer reanchorWallTime(DateTime now, TimerClockSample? clock) {
+    final since = runningSince;
+    final measured = _elapsedOnDevice(clock);
+    if (since == null || measured == null) return this;
+    final projected = now.subtract(measured);
+    if (projected.difference(since).abs() < const Duration(seconds: 1)) {
+      return this;
+    }
+    return RoutineTimer(
+      id: id,
+      occurrenceId: occurrenceId,
+      accumulated: accumulated,
+      runningSince: projected,
+      startedOnDevice: startedOnDevice,
+    );
   }
 }
 

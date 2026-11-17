@@ -22,6 +22,7 @@ void main() {
   late StoredPlannerProfile repository;
   late FakeNotifications platform;
   late LocalReminders reminders;
+  TimerClockSample? timerClock;
 
   Future<void> settings({
     bool enabled = true,
@@ -64,6 +65,7 @@ void main() {
   setUpAll(sqfliteFfiInit);
   setUp(() async {
     current = day(16, 8);
+    timerClock = null;
     zone = 'UTC';
     directory = await Directory.systemTemp.createTemp('routina-notifs-');
     store = await SqlitePlannerStore.open(
@@ -78,6 +80,7 @@ void main() {
       openStore: () async => store,
       notificationPlatform: platform,
       readDeviceZone: () async => zone,
+      readTimerClock: () async => timerClock,
     );
     reminders = repository.localReminders!;
     await settings();
@@ -87,6 +90,44 @@ void main() {
     reminders.dispose();
     await directory.delete(recursive: true);
   });
+
+  test(
+    'timer reminder keeps its identity when the device clock jumps',
+    () async {
+      timerClock = (
+        bootCount: 5,
+        uptimeUs: 10 * Duration.microsecondsPerMinute,
+      );
+      final work = repository.routineWorkspace;
+      final routine = await work.save(
+        Routine(
+          RecordMetadata.create(),
+          title: 'Target durasi',
+          frequencyRule: 'FREQ=DAILY',
+          targetType: RoutineTargetType.duration,
+          targetDuration: const Duration(minutes: 20),
+        ),
+      );
+      final startedOn = work.today;
+      await work.start(routine.id, startedOn);
+      final before = ofKind(ReminderKind.timerGoal).single;
+      expect(before.at, day(16, 8, 20));
+
+      current = day(17, 10);
+      timerClock = (
+        bootCount: 5,
+        uptimeUs: 15 * Duration.microsecondsPerMinute,
+      );
+      await reminders.refresh();
+      final shifted = ofKind(ReminderKind.timerGoal).single;
+      expect(shifted.id, before.id);
+      expect(shifted.at, day(17, 10, 15));
+      expect(shifted.expires, day(17, 11, 15));
+      final view = (await work.read(routine.id, startedOn))!;
+      await work.pause(view.timer!);
+      expect(ofKind(ReminderKind.timerGoal), isEmpty);
+    },
+  );
 
   test(
     'permission is requested only explicitly, denial keeps Home usable, and OS settings can be opened',

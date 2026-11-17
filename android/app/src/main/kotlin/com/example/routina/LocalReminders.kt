@@ -12,6 +12,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
+import android.provider.Settings
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Calendar
@@ -30,10 +32,12 @@ internal object LocalReminders {
 
     fun permission(context: Context): String {
         val manager = context.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return if (preferences(context).getBoolean("asked", false)) "denied" else "notDetermined"
+        if (Build.VERSION.SDK_INT >= 33) {
+            val known = preferences(context).getBoolean("asked", false)
+            if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                return if (known) "denied" else "notDetermined"
+            }
+            if (!known) recordPermissionRequest(context)
         }
         if (Build.VERSION.SDK_INT >= 24 && !manager.areNotificationsEnabled()) return "denied"
         if (Build.VERSION.SDK_INT >= 26 &&
@@ -48,6 +52,18 @@ internal object LocalReminders {
     private fun save(context: Context, plan: JSONObject) {
         check(preferences(context).edit().putString("plan", plan.toString()).commit())
     }
+
+    private fun bootCount(context: Context): Int =
+        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
+
+    private fun wallOffset(): Long = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+
+    // A timer goal uses an elapsed duration. A cached RTC estimate can fire
+    // early after a wall-clock jump. Dart projects it again on resume.
+    private fun validTimerClock(context: Context, plan: JSONObject, row: JSONObject): Boolean =
+        row.optString("kind") != "timerGoal" ||
+            (plan.has("wallOffset") && plan.optInt("bootCount", -2) == bootCount(context) &&
+                kotlin.math.abs(wallOffset() - plan.getLong("wallOffset")) < 2000)
 
     private fun alarm(context: Context, id: String): PendingIntent =
         PendingIntent.getBroadcast(
@@ -96,9 +112,10 @@ internal object LocalReminders {
                 if (next.getLong("expires") <= now) continue
                 val before = previous.optJSONObject(id)
                 val sameTime = before != null && before.getLong("at") == next.getLong("at")
-                val posted = sameTime && before!!.optBoolean("posted")
+                val posted = before?.optBoolean("posted") == true &&
+                    (sameTime || next.optString("kind") == "timerGoal")
                 val wasArmed = sameTime && before!!.optBoolean("armed")
-                val armed = wasArmed && !rebuild &&
+                val armed = wasArmed && !rebuild && validTimerClock(context, old, next) &&
                     !(zoneChanged && next.optBoolean("deviceTime"))
                 next.put("posted", posted)
                 next.put("armed", armed)
@@ -109,13 +126,16 @@ internal object LocalReminders {
             }
         }
         val result = JSONObject().put("jobs", jobs).put("zone", zone)
+            .put("bootCount", bootCount(context)).put("wallOffset", wallOffset())
             .put("quiet", incoming.opt("quiet") ?: JSONObject.NULL)
         // Persist eligibility before replacing alarms. An old broadcast that
         // reaches the receiver after this point uses the new eligibility.
         save(context, result)
         previous.keys().forEach { id ->
             val next = jobs.optJSONObject(id)
-            if (next == null || previous.getJSONObject(id).getLong("at") != next.getLong("at")) {
+            if (next == null ||
+                (!next.optBoolean("posted") && previous.getJSONObject(id).getLong("at") != next.getLong("at"))
+            ) {
                 cancel(context, id)
             }
         }
@@ -132,16 +152,23 @@ internal object LocalReminders {
         val jobs = plan.optJSONObject("jobs") ?: return
         val now = System.currentTimeMillis()
         val enabled = permission(context) == "authorized"
+        var repaired = false
         jobs.keys().forEach { id ->
             val row = jobs.getJSONObject(id)
-            if (enabled && row.optBoolean("armed") && !row.optBoolean("posted") &&
-                row.getLong("expires") > now && validZone(plan, row)
+            if (enabled && !row.optBoolean("posted") &&
+                (row.optBoolean("armed") || row.getLong("at") > now || row.optBoolean("catchUp")) &&
+                row.getLong("expires") > now && validZone(plan, row) && validTimerClock(context, plan, row)
             ) {
                 arm(context, id, row.getLong("at"))
+                if (!row.optBoolean("armed")) {
+                    row.put("armed", true)
+                    repaired = true
+                }
             } else if (!row.optBoolean("posted")) {
                 context.getSystemService(AlarmManager::class.java).cancel(alarm(context, id))
             }
         }
+        if (repaired) save(context, plan)
     }
 
     private fun validZone(plan: JSONObject, row: JSONObject) =
@@ -166,9 +193,14 @@ internal object LocalReminders {
         val plan = plan(context)
         val row = plan.optJSONObject("jobs")?.optJSONObject(id) ?: return
         val now = System.currentTimeMillis()
-        if (row.optBoolean("posted") || now < row.getLong("at") ||
-            now >= row.getLong("expires") || !validZone(plan, row)
+        if (row.optBoolean("posted") || now >= row.getLong("expires") ||
+            !validZone(plan, row) || !validTimerClock(context, plan, row)
         ) return
+        if (permission(context) != "authorized") return
+        if (now < row.getLong("at")) {
+            arm(context, id, row.getLong("at"))
+            return
+        }
         row.put("posted", true)
         save(context, plan)
         if (permission(context) != "authorized" || quietNow(plan, row.getString("kind"))) return

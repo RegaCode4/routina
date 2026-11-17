@@ -62,7 +62,7 @@ Future<BackupSnapshot> _readBackup(DatabaseExecutor db) async {
   if (records.isNotEmpty || timers.isNotEmpty || goals.isNotEmpty) {
     throw BackupIssue.invalidData;
   }
-  return BackupSnapshot(plannerSchemaVersion, entities);
+  return BackupSnapshot(plannerBackupSchemaVersion, entities);
 }
 
 Future<Map<String, BackupRow>> _routineState(
@@ -76,7 +76,7 @@ Future<void> _replaceBackup(
   DatabaseExecutor db,
   BackupSnapshot snapshot,
 ) async {
-  if (snapshot.schemaVersion != plannerSchemaVersion) {
+  if (snapshot.schemaVersion != plannerBackupSchemaVersion) {
     throw BackupIssue.unsupportedSchema;
   }
   final tables = <String, List<BackupRow>>{

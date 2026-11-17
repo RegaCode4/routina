@@ -33,6 +33,7 @@ class RoutineView {
     required this.timer,
     required this.weeklyCount,
     required this.activeDay,
+    this.timerClock,
   });
 
   final Routine routine;
@@ -42,13 +43,16 @@ class RoutineView {
   final RoutineTimer? timer;
   final int weeklyCount;
   final LocalDate? activeDay;
+  final TimerClockSample? timerClock;
 
   RoutineGoal get goal => occurrence?.goal ?? routine.goal;
   bool get completed => occurrence?.status == ActivityStatus.completed;
   Duration get recorded =>
       logs.fold(Duration.zero, (total, log) => total + log.actualDuration);
-  Duration actualAt(DateTime now) =>
-      recorded + (timer?.elapsedAt(now) ?? Duration.zero);
+  Duration timerElapsedAt(DateTime now, {TimerClockSample? clock}) =>
+      timer?.elapsedAt(now, clock ?? timerClock) ?? Duration.zero;
+  Duration actualAt(DateTime now, {TimerClockSample? clock}) =>
+      recorded + timerElapsedAt(now, clock: clock);
 
   int get target => switch (goal.type) {
     RoutineTargetType.duration => goal.duration?.inMicroseconds ?? 0,
@@ -56,26 +60,32 @@ class RoutineView {
     RoutineTargetType.count || RoutineTargetType.frequency => goal.amount ?? 0,
   };
 
-  int achievedAt(DateTime now) => switch (goal.type) {
-    RoutineTargetType.duration => actualAt(now).inMicroseconds,
-    RoutineTargetType.checklist =>
-      goal.checklist
-          .where((item) => occurrence?.checkedItems.contains(item) ?? false)
-          .length,
-    RoutineTargetType.count => occurrence?.recordedCount ?? 0,
-    RoutineTargetType.frequency => weeklyCount,
-  };
+  int achievedAt(DateTime now, {TimerClockSample? clock}) =>
+      switch (goal.type) {
+        RoutineTargetType.duration => actualAt(
+          now,
+          clock: clock,
+        ).inMicroseconds,
+        RoutineTargetType.checklist =>
+          goal.checklist
+              .where((item) => occurrence?.checkedItems.contains(item) ?? false)
+              .length,
+        RoutineTargetType.count => occurrence?.recordedCount ?? 0,
+        RoutineTargetType.frequency => weeklyCount,
+      };
 
-  bool goalReachedAt(DateTime now) => target > 0 && achievedAt(now) >= target;
-  double progressAt(DateTime now) =>
-      target == 0 ? 0 : (achievedAt(now) / target).clamp(0.0, 1.0).toDouble();
+  bool goalReachedAt(DateTime now, {TimerClockSample? clock}) =>
+      target > 0 && achievedAt(now, clock: clock) >= target;
+  double progressAt(DateTime now, {TimerClockSample? clock}) => target == 0
+      ? 0
+      : (achievedAt(now, clock: clock) / target).clamp(0.0, 1.0).toDouble();
 
-  RoutineStatus statusAt(DateTime now) {
+  RoutineStatus statusAt(DateTime now, {TimerClockSample? clock}) {
     if (completed) return RoutineStatus.completed;
     if (occurrence?.status == ActivityStatus.skipped) {
       return RoutineStatus.skipped;
     }
-    if (goalReachedAt(now)) return RoutineStatus.pending;
+    if (goalReachedAt(now, clock: clock)) return RoutineStatus.pending;
     if (timer?.runningSince != null) return RoutineStatus.active;
     final end = occurrence?.schedule?.end.instant;
     return end != null && now.isAfter(end)
@@ -91,6 +101,7 @@ class RoutineWorkspace {
     required this.readZones,
     required this.sundayFirst,
     required this.now,
+    this.readTimerClock,
   });
 
   final Future<PlannerStore> Function() openStore;
@@ -98,6 +109,8 @@ class RoutineWorkspace {
   final CalendarZones Function() readZones;
   final bool Function() sundayFirst;
   final DateTime Function() now;
+  final Future<TimerClockSample?> Function()? readTimerClock;
+  Future<TimerClockSample?> sampleTimerClock() async => readTimerClock?.call();
 
   CalendarZones get zones => readZones();
   DateTime get today => civilDate(zones.wall(now(), zones.displayId));
@@ -109,6 +122,7 @@ class RoutineWorkspace {
     bool onDateOnly = false,
   }) async => (await openStore()).transaction((data) async {
     final records = await _RoutineData.read(data);
+    final clock = records.timers.isEmpty ? null : await sampleTimerClock();
     final date = civilDate(day);
     final key = civilKey(date);
     final recorded = onDateOnly
@@ -122,7 +136,7 @@ class RoutineWorkspace {
     final displayZones = zones;
     final rows = [
       for (final routine in await data.routines.all())
-        _view(routine, date, records),
+        _view(routine, date, records, clock),
     ];
     return [
       for (final row in rows)
@@ -140,9 +154,10 @@ class RoutineWorkspace {
   Future<RoutineView?> read(String id, DateTime day) async =>
       (await openStore()).transaction((data) async {
         final routine = await data.routines.find(id);
-        return routine == null
-            ? null
-            : _view(routine, civilDate(day), await _RoutineData.read(data));
+        if (routine == null) return null;
+        final records = await _RoutineData.read(data);
+        final clock = records.timers.isEmpty ? null : await sampleTimerClock();
+        return _view(routine, civilDate(day), records, clock);
       });
 
   Future<({String routineId, DateTime day})?> openOccurrence(String id) async {
@@ -158,6 +173,7 @@ class RoutineWorkspace {
   Future<List<RoutineView>> history(String? id) async =>
       (await openStore()).transaction((data) async {
         final records = await _RoutineData.read(data);
+        final clock = records.timers.isEmpty ? null : await sampleTimerClock();
         final routines = {
           for (final routine in await data.routines.all())
             if (id == null || routine.id == id) routine.id: routine,
@@ -165,13 +181,23 @@ class RoutineWorkspace {
         final rows = [
           for (final row in records.occurrences)
             if (routines[row.routineId] case final routine?)
-              _view(routine, civilDate(DateTime.parse(row.day.value)), records),
+              _view(
+                routine,
+                civilDate(DateTime.parse(row.day.value)),
+                records,
+                clock,
+              ),
         ];
         rows.sort((a, b) => b.day.compareTo(a.day));
         return rows;
       });
 
-  RoutineView _view(Routine routine, DateTime day, _RoutineData records) {
+  RoutineView _view(
+    Routine routine,
+    DateTime day,
+    _RoutineData records,
+    TimerClockSample? clock,
+  ) {
     final key = civilKey(day);
     final weekStartKey = civilKey(weekStart(day));
     final endKey = civilKey(weekStart(day).add(const Duration(days: 7)));
@@ -202,6 +228,7 @@ class RoutineWorkspace {
       timer: records.timers[occurrence?.id],
       weeklyCount: weeklyCount,
       activeDay: activeDay,
+      timerClock: clock,
     );
   }
 
@@ -433,7 +460,14 @@ class RoutineWorkspace {
       ),
     );
     final records = await _RoutineData.read(data);
-    await _syncGoal(data, row, records.timers[row.id], records, current);
+    await _syncGoal(
+      data,
+      row,
+      records.timers[row.id],
+      records,
+      current,
+      await sampleTimerClock(),
+    );
   });
 
   Future<void> confirm(String id, DateTime day, ActivityStatus status) async =>
@@ -466,14 +500,16 @@ class RoutineWorkspace {
           throw StaleRecord(row.id);
         }
         if (previous?.runningSince != null) return;
+        final clock = await sampleTimerClock();
         final timer = RoutineTimer(
           id: previous?.id ?? RecordMetadata.create().id,
           occurrenceId: row.id,
           accumulated: previous?.accumulated ?? Duration.zero,
           runningSince: current,
+          startedOnDevice: clock,
         );
         await data.saveRoutineTimer(timer);
-        await _syncGoal(data, row, timer, records, current);
+        await _syncGoal(data, row, timer, records, current, clock);
       });
 
   Future<void> pause(RoutineTimer timer) async =>
@@ -486,13 +522,14 @@ class RoutineWorkspace {
         }
         if (active.runningSince == null) return;
         final current = now().toUtc();
+        final clock = await sampleTimerClock();
         final paused = RoutineTimer(
           id: active.id,
           occurrenceId: active.occurrenceId,
-          accumulated: active.elapsedAt(current),
+          accumulated: active.elapsedAt(current, clock),
         );
         await data.saveRoutineTimer(paused);
-        await _syncGoal(data, row, paused, records, current);
+        await _syncGoal(data, row, paused, records, current, clock);
       });
 
   Future<void> stop(RoutineTimer timer) async =>
@@ -512,8 +549,9 @@ class RoutineWorkspace {
     _RoutineData records,
     DateTime current,
   ) async {
-    await _syncGoal(data, row, active, records, current);
-    final elapsed = active.elapsedAt(current);
+    final clock = await sampleTimerClock();
+    await _syncGoal(data, row, active, records, current, clock);
+    final elapsed = active.elapsedAt(current, clock);
     if (elapsed > Duration.zero) {
       await data.timeLogs.save(
         TimeLog(
@@ -567,10 +605,14 @@ class RoutineWorkspace {
       (await openStore()).transaction((data) async {
         final records = await _RoutineData.read(data);
         final current = now().toUtc();
+        final clock = records.timers.isEmpty ? null : await sampleTimerClock();
         for (final row in records.occurrences) {
           final timer = records.timers[row.id];
-          if (timer != null && records.goalEvents[row.id]?.reachedAt == null) {
-            await _syncGoal(data, row, timer, records, current);
+          if (timer == null) continue;
+          final aligned = timer.reanchorWallTime(current, clock);
+          if (!identical(aligned, timer)) await data.saveRoutineTimer(aligned);
+          if (records.goalEvents[row.id]?.reachedAt == null) {
+            await _syncGoal(data, row, aligned, records, current, clock);
           }
         }
         return records.goalEvents.values.toList();
@@ -582,6 +624,7 @@ class RoutineWorkspace {
     RoutineTimer? timer,
     _RoutineData records,
     DateTime current,
+    TimerClockSample? clock,
   ) async {
     final target = row.goal?.duration;
     if (row.goal?.type != RoutineTargetType.duration || target == null) return;
@@ -591,15 +634,22 @@ class RoutineWorkspace {
       Duration.zero,
       (total, log) => total + log.actualDuration,
     );
-    final remaining = target - logged - (timer?.accumulated ?? Duration.zero);
+    final remaining =
+        target - logged - (timer?.elapsedAt(current, clock) ?? Duration.zero);
     final runningSince = timer?.runningSince;
     final DateTime due;
     if (remaining <= Duration.zero) {
-      due = existing != null && !existing.dueAt.isAfter(current)
+      final projected = runningSince == null ? current : current.add(remaining);
+      due =
+          existing != null &&
+              !existing.dueAt.isAfter(current) &&
+              (runningSince == null ||
+                  existing.dueAt.difference(projected).abs() <
+                      const Duration(seconds: 1))
           ? existing.dueAt
-          : current;
+          : projected;
     } else if (runningSince != null) {
-      due = runningSince.add(remaining);
+      due = current.add(remaining);
     } else {
       if (existing != null) {
         await data.removeRoutineGoalEvent(row.id);
@@ -608,7 +658,11 @@ class RoutineWorkspace {
       return;
     }
     final reached = !due.isAfter(current) ? current : null;
-    if (existing?.dueAt == due && reached == null) return;
+    if (reached == null &&
+        existing != null &&
+        due.difference(existing.dueAt).abs() < const Duration(seconds: 1)) {
+      return;
+    }
     final event = RoutineGoalEvent(row.id, due, reachedAt: reached);
     await data.saveRoutineGoalEvent(event);
     records.goalEvents[row.id] = event;

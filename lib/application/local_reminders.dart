@@ -70,11 +70,13 @@ class LocalReminders extends ChangeNotifier {
     required this.openStore,
     required this.openCalendar,
     required this.now,
+    this.readTimerClock,
   });
   final NotificationPlatform platform;
   final Future<PlannerStore> Function() openStore;
   final Future<ActivityCalendar> Function() openCalendar;
   final DateTime Function() now;
+  final Future<TimerClockSample?> Function()? readTimerClock;
 
   static const queueLimit = 60;
   static const snoozeDelay = Duration(minutes: 10);
@@ -241,7 +243,9 @@ class LocalReminders extends ChangeNotifier {
           (!beyondHorizon && time.isAfter(end))) {
         return;
       }
-      final id = '${kind.name}:$owner:${time.millisecondsSinceEpoch}';
+      final id = kind == ReminderKind.timerGoal
+          ? '${kind.name}:$owner'
+          : '${kind.name}:$owner:${time.millisecondsSinceEpoch}';
       candidates[id] = LocalReminder(
         id: id,
         kind: kind,
@@ -395,20 +399,54 @@ class LocalReminders extends ChangeNotifier {
         );
       }
     }
-    for (final goal in await data.routineGoalEvents()) {
+    final goals = await data.routineGoalEvents();
+    final clock = goals.any((goal) => goal.reachedAt == null)
+        ? await readTimerClock?.call()
+        : null;
+    final running = {
+      if (clock != null)
+        for (final timer in await data.routineTimers())
+          if (timer.startedOnDevice?.bootCount == clock.bootCount)
+            timer.occurrenceId: timer,
+    };
+    final logged = <String, Duration>{};
+    if (running.isNotEmpty) {
+      for (final log in await data.timeLogs.all()) {
+        if (log.target.kind == RecordKind.routineOccurrence) {
+          final id = log.target.id;
+          logged[id] = (logged[id] ?? Duration.zero) + log.actualDuration;
+        }
+      }
+    }
+    for (final goal in goals) {
       final occurrence = occurrences[goal.occurrenceId];
       if (occurrence == null || occurrence.status != ActivityStatus.planned) {
         continue;
       }
       final routine = routines[occurrence.routineId];
       if (routine == null) continue;
+      var due = goal.dueAt;
+      final timer = running[occurrence.id];
+      if (goal.reachedAt == null && timer != null) {
+        final target = occurrence.goal?.duration;
+        if (target != null) {
+          final projected = current.add(
+            target -
+                (logged[occurrence.id] ?? Duration.zero) -
+                timer.elapsedAt(current, clock),
+          );
+          if (projected.difference(due).abs() >= const Duration(seconds: 1)) {
+            due = projected;
+          }
+        }
+      }
       add(
         ReminderKind.timerGoal,
         occurrence.id,
         'Target durasi tercapai',
         routine.title,
-        goal.dueAt,
-        goal.dueAt.add(const Duration(hours: 1)),
+        due,
+        due.add(const Duration(hours: 1)),
         catchUp: true,
       );
     }

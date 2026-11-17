@@ -47,6 +47,7 @@ void main() {
               today: today,
               openStore: SqlitePlannerStore.open,
               notificationPlatform: const DeviceNotifications(),
+              readTimerClock: const DeviceClock().timerSample,
               readDeviceZone: () async {
                 try {
                   const channel = MethodChannel('routina/device_time_zone');

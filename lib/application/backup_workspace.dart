@@ -40,10 +40,12 @@ class BackupWorkspace {
     required this.openStore,
     required this.now,
     this.cipher = const BackupCipher(),
+    this.readTimerClock,
   });
   final Future<PlannerStore> Function() openStore;
   final DateTime Function() now;
   final BackupCipher cipher;
+  final Future<TimerClockSample?> Function()? readTimerClock;
 
   Future<({Map<String, int> counts, PlannerPreferences preferences})>
   summary() async {
@@ -59,14 +61,27 @@ class BackupWorkspace {
   Future<Uint8List> export(String password) async {
     if (password.isEmpty) throw BackupIssue.passwordRequired;
     final store = await openStore();
-    final original = await store.readBackup();
-    final capturedAt = now().toUtc();
-    final snapshot = BackupSnapshot(
-      original.schemaVersion,
-      original.entities.values.map((item) => _pauseTimer(item, capturedAt)),
-    );
-    await store.validateBackup(snapshot);
-    return cipher.seal(BackupArchive(capturedAt, snapshot), password);
+    final archive = await store.transaction((data) async {
+      final original = await data.readBackup();
+      final capturedAt = now().toUtc();
+      final clock = await readTimerClock?.call();
+      final elapsed = <String, Duration>{
+        if (clock != null)
+          for (final timer in await data.routineTimers())
+            timer.occurrenceId: timer.elapsedAt(capturedAt, clock),
+      };
+      return BackupArchive(
+        capturedAt,
+        BackupSnapshot(
+          original.schemaVersion,
+          original.entities.values.map(
+            (item) => _pauseTimer(item, capturedAt, elapsed[item.id]),
+          ),
+        ),
+      );
+    });
+    await store.validateBackup(archive.snapshot);
+    return cipher.seal(archive, password);
   }
 
   Future<VerifiedBackup> openEncrypted(Uint8List file, String password) async {
@@ -242,7 +257,11 @@ void _checkLoggedSchedules(BackupReview review, BackupSnapshot merged) {
   }
 }
 
-BackupEntity _pauseTimer(BackupEntity item, DateTime capturedAt) {
+BackupEntity _pauseTimer(
+  BackupEntity item,
+  DateTime capturedAt,
+  Duration? elapsedOnDevice,
+) {
   final timer = item.timer;
   if (timer == null || timer['running_since_us'] is! int) return item;
   final startedAt = timer['running_since_us'] as int;
@@ -254,7 +273,8 @@ BackupEntity _pauseTimer(BackupEntity item, DateTime capturedAt) {
       ...timer,
       'running_since_us': null,
       'accumulated_us':
-          (timer['accumulated_us'] as int) + (elapsed > 0 ? elapsed : 0),
+          elapsedOnDevice?.inMicroseconds ??
+          ((timer['accumulated_us'] as int) + (elapsed > 0 ? elapsed : 0)),
     },
     goalEvent: item.goalEvent?['reached_at_us'] == null ? null : item.goalEvent,
   );

@@ -21,7 +21,7 @@ Password salah dan modifikasi ciphertext, salt, nonce, atau tag menghasilkan pes
 
 ## Manifest dan data
 
-Manifest terenkripsi memuat `application = "routina"`, `schemaVersion`, `createdAt` ISO 8601 UTC, dan jumlah per jenis entitas. Format v1 membawa skema SQLite 9. Pembaca mempertahankan kompatibilitas dengan file v1 skema 9 dari Fase 14–16. Schema ID lain ditolak sebelum penulisan. Migrasi isi file lintas versi tetap OPEN-05.
+Manifest terenkripsi memuat `application = "routina"`, `schemaVersion`, `createdAt` ISO 8601 UTC, dan jumlah per jenis entitas. Format v1 membawa skema pertukaran 9 dan tetap menerima file v1 dari Fase 14–17. Skema SQLite lokal 10 menambahkan acuan boot dan jam monotonik Android untuk timer aktif. Ekspor membawa durasi akumulasi sebagai timer yang dijeda. Acuan boot tetap tersimpan lokal. Schema ID file lain ditolak sebelum penulisan. Migrasi isi file lintas versi tetap OPEN-05.
 
 Setiap entitas membawa ID stabil, jenis, revisi, waktu pembuatan/perubahan, relasi induk, dan data sesuai tabel. Snapshot memuat profil, kategori, seri dan pengecualian, kegiatan, tugas, subtugas, sesi, rutinitas, time log, riwayat status, aturan pengingat, serta Tempat Sampah. Timer aktif dicadangkan sebagai jeda dengan durasi hingga waktu snapshot. Perkiraan target dari timer yang berjalan akan dibentuk ulang saat timer dilanjutkan. Cache pengiriman pengingat perangkat dibentuk ulang setelah commit.
 

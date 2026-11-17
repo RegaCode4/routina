@@ -41,8 +41,8 @@ String _actual(RoutineView view, DateTime now) => switch (view.goal.type) {
   RoutineTargetType.frequency => '${view.weeklyCount} kali minggu ini',
 };
 
-NeoStatus? _badge(RoutineView view, DateTime now) =>
-    switch (view.statusAt(now)) {
+NeoStatus? _badge(RoutineView view, DateTime now, {TimerClockSample? clock}) =>
+    switch (view.statusAt(now, clock: clock)) {
       RoutineStatus.notStarted => null,
       RoutineStatus.active => NeoStatus.active,
       RoutineStatus.pending => NeoStatus.pending,
@@ -427,6 +427,8 @@ class _RoutineDetailState extends State<RoutineDetail> {
   late DateTime _day = civilDate(widget.day);
   late Future<RoutineView?> _read = _workspace.read(widget.id, _day);
   Timer? _ticker;
+  TimerClockSample? _clock;
+  bool _samplingClock = false;
   AppLifecycleListener? _lifecycle;
   bool _foreground = true;
   bool _recovering = true;
@@ -465,6 +467,7 @@ class _RoutineDetailState extends State<RoutineDetail> {
     }
 
     setState(() {
+      _clock = null;
       _read = load();
     });
   }
@@ -474,8 +477,18 @@ class _RoutineDetailState extends State<RoutineDetail> {
       _ticker?.cancel();
       _ticker = null;
     } else {
-      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
+      _ticker ??= Timer.periodic(const Duration(seconds: 1), (_) async {
+        if (_samplingClock) return;
+        _samplingClock = true;
+        final visibleRead = _read;
+        try {
+          final clock = await _workspace.sampleTimerClock();
+          if (mounted && _foreground && identical(visibleRead, _read)) {
+            setState(() => _clock = clock);
+          }
+        } finally {
+          _samplingClock = false;
+        }
       });
     }
   }
@@ -754,8 +767,9 @@ class _RoutineDetailState extends State<RoutineDetail> {
         );
       }
       final now = _workspace.now();
-      final reached = view.goalReachedAt(now);
+      final reached = view.goalReachedAt(now, clock: _clock);
       final timer = view.timer;
+      final elapsed = view.timerElapsedAt(now, clock: _clock);
       if (_foreground &&
           timer?.runningSince != null &&
           reached &&
@@ -772,7 +786,7 @@ class _RoutineDetailState extends State<RoutineDetail> {
           (view.occurrence?.status ?? ActivityStatus.planned) ==
           ActivityStatus.planned;
       final schedule = view.occurrence?.schedule;
-      final badge = _badge(view, now);
+      final badge = _badge(view, now, clock: _clock);
       final zones = _workspace.zones;
       final category = widget.repository.categories
           .where((row) => row.id == view.routine.categoryId)
@@ -790,14 +804,14 @@ class _RoutineDetailState extends State<RoutineDetail> {
             subtitle:
                 '${dateLabel(view.day, year: true)} · Target ${_target(view)}',
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: NeoSpace.sm,
             children: [
-              Flexible(
-                child: Text(
-                  category?.name ??
-                      routineCadenceLabel(view.routine.frequencyRule),
-                ),
+              Text(
+                category?.name ??
+                    routineCadenceLabel(view.routine.frequencyRule),
               ),
               TextButton(
                 onPressed: _busy ? null : () => _manage(view),
@@ -814,27 +828,45 @@ class _RoutineDetailState extends State<RoutineDetail> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    timer == null
-                        ? 'Timer siap'
-                        : timer.runningSince == null
-                        ? 'Timer dijeda'
-                        : 'Sedang berlangsung',
-                    style: NeoType.item,
-                  ),
-                  const SizedBox(height: NeoSpace.sm),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
+                  Semantics(
+                    liveRegion: true,
                     child: Text(
-                      routineClock(timer?.elapsedAt(now) ?? Duration.zero),
-                      style: NeoType.metric,
-                      key: const ValueKey('routine-timer-clock'),
+                      timer == null
+                          ? 'Timer siap'
+                          : timer.runningSince == null
+                          ? 'Timer dijeda'
+                          : 'Sedang berlangsung',
+                      style: NeoType.item,
                     ),
                   ),
-                  const Text('Durasi aktual sesi', textAlign: TextAlign.center),
+                  const SizedBox(height: NeoSpace.sm),
+                  Semantics(
+                    label: 'Durasi aktual sesi',
+                    value:
+                        '${elapsed.inHours} jam '
+                        '${elapsed.inMinutes.remainder(60)} menit '
+                        '${elapsed.inSeconds.remainder(60)} detik',
+                    excludeSemantics: true,
+                    child: Column(
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            routineClock(elapsed),
+                            style: NeoType.metric,
+                            key: const ValueKey('routine-timer-clock'),
+                          ),
+                        ),
+                        const Text(
+                          'Durasi aktual sesi',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: NeoSpace.md),
                   NeoProgressBar(
-                    value: view.progressAt(now),
+                    value: view.progressAt(now, clock: _clock),
                     label: 'Progres durasi rutinitas',
                     onAccent: true,
                   ),

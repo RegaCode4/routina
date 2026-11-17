@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +18,18 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/device_clock")
+            .setMethodCallHandler { call, result ->
+                if (call.method == "timerSample") {
+                    val bootCount = Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
+                    result.success(if (bootCount < 0) null else mapOf(
+                        "bootCount" to bootCount,
+                        "uptimeUs" to SystemClock.elapsedRealtimeNanos() / 1000L,
+                    ))
+                } else {
+                    result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "routina/backup_storage")
             .setMethodCallHandler { call, result ->
                 if (call.method == "pick") backupImport.pick(result) else result.notImplemented()

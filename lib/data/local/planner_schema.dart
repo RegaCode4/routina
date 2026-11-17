@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:sqflite/sqflite.dart';
 
-const plannerSchemaVersion = 9;
+const plannerSchemaVersion = 10;
+// Device clock anchors are internal and never travel in portable backups.
+const plannerBackupSchemaVersion = 9;
 const _status = "('planned','completed','postponed','skipped','cancelled')";
 const _mode = "('originalZone','localWallTime')";
 const _activity =
@@ -419,5 +421,15 @@ Future<void> migratePlannerSchema(Database db, int from, int to) async {
       )
       SELECT id FROM hidden
       ''');
+  }
+  if (from < 10 && to >= 10) {
+    await db.execute('''
+      CREATE TABLE routine_timer_clocks (
+        occurrence_id TEXT PRIMARY KEY NOT NULL
+          REFERENCES routine_timers(occurrence_id) ON DELETE CASCADE,
+        boot_count INTEGER NOT NULL CHECK (boot_count >= 0),
+        uptime_us INTEGER NOT NULL CHECK (uptime_us >= 0)
+      )
+    ''');
   }
 }

@@ -20,6 +20,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     Future<String> Function()? readDeviceZone,
     DateTime Function()? now,
     NotificationPlatform? notificationPlatform,
+    this.readTimerClock,
   }) : _openStore = openStore,
        _readDeviceZone = readDeviceZone,
        _notificationPlatform = notificationPlatform,
@@ -30,6 +31,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   final Future<String> Function()? _readDeviceZone;
   final DateTime Function() _now;
   final NotificationPlatform? _notificationPlatform;
+  final Future<TimerClockSample?> Function()? readTimerClock;
   PlannerStore? _store;
   Future<PlannerStore>? _opening;
   List<Category> _savedCategories = const [];
@@ -70,6 +72,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
             return _calendar();
           },
           now: _now,
+          readTimerClock: readTimerClock,
         );
   Future<ActivityCalendar> _calendar() async => ActivityCalendar(
     await _database(),
@@ -100,6 +103,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
     readZones: () => _zones,
     sundayFirst: () => profile?.sundayFirst ?? false,
     now: _now,
+    readTimerClock: readTimerClock,
   );
 
   Future<void> _refreshDeviceZone() async {
@@ -121,6 +125,7 @@ class StoredPlannerProfile extends MemoryPlannerPreview {
   late final BackupWorkspace backupWorkspace = BackupWorkspace(
     openStore: _database,
     now: _now,
+    readTimerClock: readTimerClock,
   );
 
   @override

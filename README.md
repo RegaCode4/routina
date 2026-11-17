@@ -34,6 +34,8 @@ flutter test integration_test -d <device-id>
 
 Untuk smoke test offline, jalankan integrasi dengan Wi-Fi dan data seluler perangkat uji dimatikan. Tes membuat database lokal sementara dan memulai penyiapan dari awal. Gunakan emulator khusus saat mengubah konektivitas atau izin perangkat.
 
+Gunakan [checklist verifikasi perangkat](docs/ANDROID_DEVICE_QA.md) untuk skenario reboot, lock screen, penghentian proses, izin OS, dan pembaca layar.
+
 Tangkapan layar Flutter dapat dibuat pada Android dengan driver integrasi. Hasilnya tersimpan di `build/visual-audit/`.
 
 ```sh
