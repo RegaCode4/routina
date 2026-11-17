@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:routina/presentation/design_system/neo_badges.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
+import 'package:routina/presentation/design_system/neo_card.dart';
 import 'package:routina/presentation/design_system/neo_form_field.dart';
 import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
 import 'package:routina/presentation/design_system/neo_theme.dart';
 import 'package:routina/presentation/design_system/neo_tokens.dart';
 import 'package:routina/presentation/design_system/widget_gallery.dart';
+import 'package:routina/presentation/planner/preview_ui.dart';
 
 void main() {
   test('palette and disabled labels meet 4.5:1 for normal text', () {
@@ -204,6 +206,47 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('inline safety notices fit 320 dp at 200 percent text', (
+    tester,
+  ) async {
+    _viewport(tester, const Size(320, 640), 2);
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        ListView(
+          padding: const EdgeInsets.all(NeoSpace.page),
+          children: const [
+            PreviewNotice(
+              title: 'Simpan password dengan aman',
+              message: 'Backup tidak dapat dibuka bila password hilang.',
+              icon: Icons.lock_outline,
+              tone: NeoCardTone.highlighted,
+              inline: true,
+            ),
+            PreviewNotice(
+              title: 'Masa retensi berakhir',
+              message: 'Item kedaluwarsa dapat dihapus permanen secara manual.',
+              icon: Icons.warning_amber_rounded,
+              warning: true,
+              inline: true,
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Simpan password dengan aman')),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('Masa retensi berakhir')),
+      findsOneWidget,
+    );
+
+    semantics.dispose();
+    expect(tester.takeException(), isNull);
+  });
 
   for (final (size, scale) in [
     (const Size(390, 844), 1.0),

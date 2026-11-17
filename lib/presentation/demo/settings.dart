@@ -18,12 +18,12 @@ import 'package:routina/presentation/planner/trash_screen.dart';
 import 'package:routina/presentation/demo/backup.dart';
 import 'package:routina/presentation/demo/demo_session.dart';
 import 'package:routina/presentation/demo/demo_widgets.dart';
-import 'package:routina/presentation/demo/statistics.dart';
 import 'package:routina/presentation/demo/trash.dart';
 
 class DemoProfile extends StatelessWidget {
-  const DemoProfile(this.demo, {super.key});
+  const DemoProfile(this.demo, {required this.onStatistics, super.key});
   final DemoSession demo;
+  final VoidCallback onStatistics;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -162,15 +162,7 @@ class DemoProfile extends StatelessWidget {
                   null => DemoTrashScreen(demo),
                 }),
           ),
-          DemoRow(
-            'Statistik',
-            icon: Icons.bar_chart,
-            onTap: () => openDemo<void>(
-              context,
-              DemoStatistics(demo),
-              route: '/statistik',
-            ),
-          ),
+          DemoRow('Statistik', icon: Icons.bar_chart, onTap: onStatistics),
         ]),
       );
     },

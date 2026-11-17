@@ -137,6 +137,7 @@ class _TrashScreenState extends State<TrashScreen> {
                       'Item kedaluwarsa dapat dihapus permanen secara manual.',
                   warning: true,
                   icon: Icons.warning_amber_rounded,
+                  inline: true,
                 ),
                 const SizedBox(height: NeoSpace.sm),
               ],

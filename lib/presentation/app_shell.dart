@@ -347,7 +347,7 @@ class _AppShellState extends State<AppShell> {
               )
             else
               DemoRoutines(_demo),
-            DemoProfile(_demo),
+            DemoProfile(_demo, onStatistics: _stats),
           ],
         ),
       ),

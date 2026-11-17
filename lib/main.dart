@@ -1,5 +1,6 @@
 import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:routina/application/planner_preview.dart';
@@ -31,7 +32,9 @@ void main() {
     ),
   );
 
-  const scenario = String.fromEnvironment('ROUTINA_PREVIEW');
+  const scenario = kReleaseMode
+      ? ''
+      : String.fromEnvironment('ROUTINA_PREVIEW');
   final today = switch (const ReadToday(DeviceClock())()) {
     Success(:final value) => value,
     Failure() => DateTime(2026, 11, 15),

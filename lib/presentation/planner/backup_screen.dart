@@ -322,6 +322,8 @@ class _BackupExportState extends State<_BackupExportPage> {
               title: 'Simpan password dengan aman',
               message: 'Backup tidak dapat dibuka bila password hilang.',
               icon: Icons.lock_outline,
+              tone: NeoCardTone.highlighted,
+              inline: true,
             ),
             _passwordField('Password backup', _password),
             _passwordField(

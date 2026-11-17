@@ -146,6 +146,8 @@ class PreviewNotice extends StatelessWidget {
     this.warning = false,
     this.loading = false,
     this.button,
+    this.tone,
+    this.inline = false,
     super.key,
   });
   final String title;
@@ -154,24 +156,23 @@ class PreviewNotice extends StatelessWidget {
   final bool warning;
   final bool loading;
   final Widget? button;
+  final NeoCardTone? tone;
+  final bool inline;
 
   @override
-  Widget build(BuildContext context) => NeoCard(
-    tone: warning ? NeoCardTone.warning : NeoCardTone.plain,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (loading)
-          const SizedBox.square(
+  Widget build(BuildContext context) {
+    final leading = loading
+        ? const SizedBox.square(
             dimension: NeoSpace.page,
             child: CircularProgressIndicator(
               color: NeoColors.ink,
               strokeWidth: 2,
             ),
           )
-        else
-          ExcludeSemantics(child: Icon(icon)),
-        const SizedBox(height: NeoSpace.xs),
+        : ExcludeSemantics(child: Icon(icon));
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
         Semantics(liveRegion: true, child: Text(title, style: NeoType.section)),
         const SizedBox(height: NeoSpace.xxs),
         Text(message, style: NeoType.body.copyWith(color: NeoColors.muted)),
@@ -180,8 +181,28 @@ class PreviewNotice extends StatelessWidget {
           button,
         ],
       ],
-    ),
-  );
+    );
+    return NeoCard(
+      tone: tone ?? (warning ? NeoCardTone.warning : NeoCardTone.plain),
+      child: inline
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                leading,
+                const SizedBox(width: NeoSpace.sm),
+                Expanded(child: content),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                leading,
+                const SizedBox(height: NeoSpace.xs),
+                content,
+              ],
+            ),
+    );
+  }
 }
 
 class PreviewField extends StatelessWidget {

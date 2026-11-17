@@ -133,6 +133,11 @@ class NotificationStatusNotice extends StatelessWidget {
               title: title,
               message: message,
               warning: status.permission == NotificationPermission.denied,
+              inline: !showAuthorized,
+              tone: showAuthorized ? null : NeoCardTone.highlighted,
+              icon: showAuthorized
+                  ? Icons.info_outline
+                  : Icons.warning_amber_rounded,
               button:
                   label == null ||
                       !status.enabled &&

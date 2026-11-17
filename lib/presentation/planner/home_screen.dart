@@ -233,6 +233,8 @@ class _PlannerHomeState extends State<PlannerHome> {
                 child: PreviewNotice(
                   title: 'Pengingat di Home',
                   message: '${reminders.first.title} · ${reminders.first.body}',
+                  inline: true,
+                  icon: Icons.notifications_none,
                   button: NeoButton(
                     label: 'Lihat pengingat',
                     variant: NeoButtonVariant.secondary,
