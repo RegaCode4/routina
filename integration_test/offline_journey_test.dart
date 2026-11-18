@@ -10,6 +10,8 @@ import 'package:routina/presentation/app.dart';
 import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/planner/productivity_statistics.dart';
 
+import 'support/startup_wait.dart';
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const capture = bool.fromEnvironment('ROUTINA_CAPTURE');
@@ -39,6 +41,7 @@ void main() {
           ),
         ),
       );
+      await waitForPlannerStartup(tester);
       await tester.pumpAndSettle();
     }
 
@@ -144,6 +147,12 @@ void main() {
 }
 
 Future<void> _tap(WidgetTester tester, Finder target) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 20));
+  while (target.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
+    await tester.pump(const Duration(milliseconds: 50));
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+  }
+  expect(target, findsWidgets, reason: 'Wait for asynchronous native storage.');
   await tester.ensureVisible(target);
   await tester.pumpAndSettle();
   await tester.tap(target);

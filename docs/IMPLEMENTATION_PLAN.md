@@ -87,6 +87,10 @@ Jika keputusan produk diperbarui, catat persetujuan dan nomor wawancara di PRD. 
 
 Permintaan pemilik mengonfirmasi **Routina** dan Android applicationId final **`com.regacode.routina`**. Fase desain ini membuat ikon, konsep adaptive, splash, eksplorasi dan ekspor di FigCraft; [hasil dan handoff](BRANDING.md) tersedia. Kandidat visual dan warna Ember menunggu review pemilik (sisa OPEN-10). Penerapan ID/aset ke kode, build release candidate, dan publikasi belum termasuk lingkup ini. Catatan OPEN-10 di atas merupakan register awal; nama telah dikonfirmasi, sedangkan persetujuan logo/ikon/splash tetap terbuka.
 
+## Fase 20A · integrasi identitas dan branding
+
+**COMPLETE sesuai lingkup permintaan:** persetujuan seluruh paket branding diterima, Android ID `com.regacode.routina` diterapkan, aset FigCraft diintegrasikan dan diuji pada API 36. [Laporan QA](BRANDING_QA.md) mencatat 164 unit/widget dan enam skenario integrasi yang lulus beserta batas visual/perangkat. OPEN-10 untuk paket logo/ikon/splash ini ditutup; keputusan lain dalam register tetap mengikuti lingkupnya. Bundle ID iOS belum diubah. Signing produksi, RC dan publikasi bukan hasil Fase 20A; jangan melanjutkan Fase 20B otomatis.
+
 ## Risiko dan verifikasi
 
 | Risiko | Dependency | Mitigasi **PROPOSED** |

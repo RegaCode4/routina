@@ -1,20 +1,20 @@
 # Branding Routina · ikon dan splash
 
-18 November 2026, setelah Fase 19. **Desain dibuat melalui FigCraft MCP headless dan disimpan; rekomendasi visual menunggu review pemilik.** Fase ini hanya mengubah desain, ekspor, dan dokumentasi. Implementasi Android/Flutter dan build rilis tidak termasuk.
+18 November 2026 · Fase 20A. **Pemilik secara eksplisit menjawab “Setujui seluruh paket branding” setelah review ikon, warna, adaptive mask dan splash ditampilkan.** Paket disetujui mencakup 01 / Ember, adaptive + monochrome, Ember #EE613E, serta splash tanpa wordmark. Integrasi memakai ekspor FigCraft asli; signing produksi, publikasi, dan Fase 20B tidak termasuk.
 
 ## Keputusan dan rekomendasi
 
-- **CONFIRMED dari permintaan pemilik:** nama aplikasi `Routina`, final Android applicationId `com.regacode.routina`, distribusi APK langsung dari landing page. ID tersebut dicatat untuk fase berikutnya; kode masih memakai `com.example.routina`.
-- **PROPOSED untuk persetujuan pemilik:** ikon **01 / Ember**, disempurnakan dalam `BRAND_Icon_Final`; splash **Ember dengan mark terpusat**, dalam `BRAND_Splash_Final`.
+- **CONFIRMED dari permintaan pemilik:** nama aplikasi `Routina`, final Android applicationId `com.regacode.routina`, distribusi APK langsung dari landing page. ApplicationId, namespace dan package Kotlin kini memakai ID final. iOS tetap memakai identifier sebelumnya sampai ada keputusan terpisah.
+- **DISETUJUI pemilik:** ikon **01 / Ember**, disempurnakan dalam `BRAND_Icon_Final`; splash **Ember dengan mark terpusat**, dalam `BRAND_Splash_Final`.
 - Monogram R digambar sebagai path vektor orisinal: bowl membulat, counter terbuka, kaki diagonal, outline ink dan shadow keras ke kiri bawah. GIF yang diberikan pemilik dipakai sebagai arah bentuk/warna, tanpa ditempel atau ditrace.
-- Warna ekstensi **Ember `#EE613E`** diusulkan untuk launcher/splash. Cream `#F5F2E9` dan ink `#171717` memakai token yang tersedia. Palet UI biru/kuning/coral tetap acuan aplikasi. Kontras ink terhadap Ember terhitung **5,48:1**.
-- Nama frame `Final` berarti **kandidat rekomendasi**, bukan persetujuan final pemilik atau bukti siap rilis.
+- Warna ekstensi **Ember `#EE613E`** disetujui untuk launcher/splash. Cream `#F5F2E9` dan ink `#171717` memakai token yang tersedia. Palet UI biru/kuning/coral tetap acuan aplikasi. Kontras ink terhadap Ember terhitung **5,48:1**.
+- Frame `Final` kini merujuk pilihan yang disetujui. Persetujuan desain tidak menyatakan kesiapan distribusi publik.
 
 ![Pasangan rekomendasi](../design/branding/exports/routina-brand-review.png)
 
 ## Sumber desain dan inventory frame
 
-[Personal Planner - Flutter UI Design.figcraft](../Personal%20Planner%20-%20Flutter%20UI%20Design.figcraft), halaman baru **12 · Branding & Launch** (14726). Halaman 00–11, seluruh layar dan flow lama dipertahankan. Token existing `Routina / Light` digunakan kembali; ditambah `brand/ember-proposed` (VariableID:28). Monogram berupa vektor editable dan tidak bergantung pada font.
+[Personal Planner - Flutter UI Design.figcraft](../Personal%20Planner%20-%20Flutter%20UI%20Design.figcraft), halaman baru **12 · Branding & Launch** (14726). Halaman 00–11, seluruh layar dan flow lama dipertahankan. Token existing `Routina / Light` digunakan kembali; ditambah `brand/ember` (VariableID:28). Monogram berupa vektor editable dan tidak bergantung pada font.
 
 | Frame | ID | Ukuran | Kegunaan |
 | --- | --- | --- | --- |
@@ -58,16 +58,36 @@ Adaptive memakai **108×108 dp** per layer, dengan skala desain **10 px/dp**. Ar
 
 Splash Android 12+ disiapkan untuk mode **tanpa icon background**: kanvas **288×288 dp**, artwork di dalam lingkaran **Ø192 dp**. Bounds konservatif mark termasuk outline dan shadow **124,45×138,34**, diagonal sekitar 186,08, di bawah 192. Mark pada preview 390×844 dan aset native memakai ukuran serta pusat yang konsisten. Latar layar Ember terpisah dari alpha mark. [Panduan splash Android](https://developer.android.com/develop/ui/views/launch/splash-screen)
 
-SVG ikon diekspor dengan stroke menjadi outline dan tanpa font/raster tertanam. SVG tetap sumber desain; konversi VectorDrawable/resource Android, penamaan `mipmap`/`drawable`, fallback sebelum API 31, density legacy, dan konfigurasi native belum dibuat. Saat integrasi, cocokkan transisi native → Flutter agar tidak ada dua splash atau pergeseran logo, dan pertahankan alur startup/loading/error sesuai [DESIGN SC-01](../DESIGN.md#sc-01-splash-screen).
+SVG ikon diekspor dengan stroke menjadi outline dan tanpa font/raster tertanam. SVG tetap sumber desain. [prepare_android_branding.ps1](../tool/prepare_android_branding.ps1) mengonversi path SVG yang sudah di-outline beserta matriks translasi langsung ke VectorDrawable, tanpa menggambar ulang atau menambah dependency. Jalankan script dari root setelah mengekspor SVG FigCraft yang disetujui. Script menolak gambar/teks/stroke atau transform lain yang belum didukung. Legacy PNG diekspor langsung melalui FigCraft pada 48/72/96/144/192 px.
+
+Resource native berada di [android/app/src/main/res](../android/app/src/main/res/): `routina_icon_foreground.xml`, `routina_icon_monochrome.xml`, `routina_splash.xml`, lima density `mipmap`, `mipmap-anydpi-v26` dan `mipmap-anydpi-v33`. Background adaptive memakai `@color/routina_ember`. Splash menggunakan layer-list terpusat pada API 24–30 dan atribut SplashScreen pada `values-v31`/`values-night-v31`. Tema tetap terang saat OS memakai night mode.
+
+Flutter memakai [routina-splash.png](../assets/branding/routina-splash.png), ekspor FigCraft 4× dari viewport 288×288, melalui [RoutinaBrandMark](../lib/presentation/branding/routina_brand.dart). Frame loading layar penuh meneruskan Ember dan pusat mark native, tanpa wordmark, spinner visual atau timer tambahan. Semantik loading tetap tersedia. MainActivity memakai edge-to-edge dan menghapus fade keluar splash sistem untuk menghindari kilatan saat frame identik diteruskan. Entry point mempramuat PNG sebelum first frame dilepas, tanpa timer; instance aplikasi/repository dibuat sekali sebelum builder pramuat. Startup siap instalasi baru tetap menampilkan Mulai/Lanjutkan; error/retry dan state resume tetap tersedia. Logika onboarding serta pemilihan Home bagi profil tersimpan tidak berubah. Metode mengikuti [panduan splash Flutter](https://docs.flutter.dev/platform-integration/android/splash-screen).
 
 ## Validasi dan batasnya
 
 - Render FigCraft diperiksa untuk tiga eksplorasi ikon, dua eksplorasi splash, kandidat final, tiga mask, safe zone, papan review, aset native, dan proof 24/32/48/96 px. Counter tetap terbuka pada sampel ukuran kecil; tidak terlihat clipping pada mask yang dibuat.
 - Metadata frame, geometri safe zone, viewBox SVG, ukuran PNG dan alpha sudut aset transparan diperiksa. Panduan safe zone tidak ikut di file foreground.
 - Keutuhan seluruh node asli halaman 00–11 dibandingkan terhadap `document.json` sebelum penyimpanan. Nilai variabel lama juga dibandingkan; hanya token Ember yang ditambahkan.
-- Tidak ada validasi render Flutter, launcher OEM, themed icon perangkat, atau cold start Android dilakukan pada fase desain ini. `dart format`, `flutter analyze`, `flutter test` dan build tidak dijalankan karena tidak ada perubahan kode/dependency.
+- Catatan fase desain awal: runtime Flutter/Android belum diuji pada commit cffc446. Pada Fase 20A format Dart, analyze, 13 tes widget terarah dan seluruh 164 unit/widget test lulus. Build debug, enam skenario integrasi API 36, record notifikasi OS dan [bukti visual aktual](BRANDING_QA.md) juga lulus sesuai cakupan yang dicatat.
 - Pemetaan frame, tautan lokal dan `git diff --check` diperiksa. Bukti ini tidak menutup blocker rilis pada [RELEASE_READINESS.md](RELEASE_READINESS.md).
 
-## Review pemilik yang masih terbuka
+## Pergantian identitas dan data uji
 
-Persetujuan diperlukan atas pasangan **01 / Ember + splash mark terpusat**, warna ekstensi Ember, serta penghilangan wordmark pada splash final. Monochrome masih konsep pendamping untuk review. Keputusan ini tidak menunda pembuatan aset review; penerapannya pada Android menunggu fase implementasi yang diminta berikutnya.
+`com.example.routina` dan `com.regacode.routina` adalah dua aplikasi/sandbox Android berbeda. Pemasangan ID baru tidak memindahkan SQLite, profil, izin, alarm, atau antrean notifikasi dari ID lama. Tidak ada migrasi lintas sandbox otomatis atau uninstall yang dilakukan oleh integrasi ini.
+
+1. Pada instalasi uji lama, ekspor backup v1 terenkripsi ke Downloads atau tujuan eksternal yang dipilih pengguna. Simpan password secara terpisah; jangan menghapus aplikasi/data lama.
+2. Pasang aplikasi dengan ID baru berdampingan. Jangan menganggap `adb install -r` akan mengubah identitas atau memindahkan data lama.
+3. Pada aplikasi baru, pilih file tersebut melalui pemilih dokumen sistem. Tinjau isi dan konflik, lalu setujui Ganti Semua/Gabungkan sesuai kebutuhan instalasi uji.
+4. Cocokkan profil/preferensi, kategori, ID/relasi, kegiatan berulang, tugas, rutinitas, histori dan Trash. Timer aktif diekspor sebagai jeda sesuai kontrak backup v1; uji lanjut/hentikan secara terpisah.
+5. Izin notifikasi diminta/diberikan pada aplikasi baru, lalu pengingat direkonsiliasi. Hindari dua set pengingat selama pengujian berdampingan dengan mengatur notifikasi pada aplikasi lama; jangan menghapus datanya.
+
+Untuk update publik selanjutnya, applicationId, sertifikat signing yang kompatibel dan versionCode meningkat tetap diwajibkan. Uji backup lintas identitas bukan bukti upgrade in-place signed APK. [Kontrak distribusi dan upgrade](ANDROID_DISTRIBUTION.md#upgrade-manual-dan-integritas-data).
+
+## Status persetujuan
+
+Paket branding ini sudah disetujui pemilik pada Fase 20A. Tidak ada keputusan visual dari paket yang ditawarkan yang masih menunggu persetujuan. Signing, perangkat fisik, iOS, runtime 16 KiB dan blocker distribusi lainnya tetap mengikuti [RELEASE_READINESS.md](RELEASE_READINESS.md).
+
+## Hasil validasi Fase 20A
+
+Fase 20A selesai untuk persetujuan, integrasi identitas/aset dan verifikasi yang diminta. [Laporan QA beserta screenshot dan batas cakupan](BRANDING_QA.md) mencatat 164 unit/widget test, enam skenario native dan pemeriksaan visual aktual. Distribusi publik tetap mengikuti gerbang rilis terpisah.

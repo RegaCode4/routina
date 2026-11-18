@@ -20,7 +20,7 @@ FigCraft MCP headless menambahkan halaman **12 · Branding & Launch** (14726) pa
 
 Rekomendasi untuk review: `BRAND_Icon_Final` (14762, 1024×1024), berdasarkan `BRAND_Icon_Exploration_01`, dan `BRAND_Splash_Final` (14756, 390×844). Tiga eksplorasi ikon, dua splash, adaptive foreground/background/composite, tiga preview mask, monochrome, safe zone, proof ukuran kecil, aset splash Android 12+, dan papan review tersedia. [Inventory seluruh nama/ID frame dan ekspor](BRANDING.md#sumber-desain-dan-inventory-frame).
 
-**CONFIRMED:** nama Routina dan applicationId final `com.regacode.routina` dari permintaan pemilik. **PROPOSED / OPEN-10:** persetujuan pasangan visual rekomendasi dan Ember `#EE613E`. Token existing digunakan kembali; ditambah `brand/ember-proposed`. Render baru diperiksa melalui MCP, belum diuji pada launcher atau runtime Android/Flutter.
+**CONFIRMED Fase 20A:** pemilik menyetujui seluruh paket 01 / Ember, adaptive + monochrome, Ember `#EE613E`, dan splash tanpa wordmark. ID `com.regacode.routina` serta aset diterapkan ke Android. Token tambahan kini bernama `brand/ember` (VariableID:28). Catatan persetujuan pada halaman 12 diperbarui tanpa mengubah bentuk mark atau frame SC-01–SC-30. [Bukti render launcher, native splash, Flutter dan integrasi API 36](BRANDING_QA.md) tersedia; mask selain circle dan themed rendering launcher tetap tercatat belum diverifikasi.
 
 ## Komponen yang dapat dibaca
 

@@ -28,6 +28,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/branding/routina-splash.png
     - assets/font/Bricolage_Grotesque/OFL.txt
     - assets/font/Space_Mono/OFL.txt
   fonts:

@@ -1,31 +1,119 @@
 {
-  "status": "recommended-pending-owner-review",
+  "status": "approved-for-phase-20a",
   "date": "2026-11-18",
   "document": "Personal Planner - Flutter UI Design.figcraft",
   "page": "12 · Branding & Launch",
   "pageId": 14726,
   "applicationName": "Routina",
   "confirmedAndroidApplicationId": "com.regacode.routina",
-  "applicationIdAppliedToCode": false,
+  "applicationIdAppliedToCode": true,
   "recommendedIconFrame": "BRAND_Icon_Final",
   "recommendedSplashFrame": "BRAND_Splash_Final",
   "colors": {
-    "emberProposed": "#EE613E",
     "cream": "#F5F2E9",
-    "ink": "#171717"
+    "ink": "#171717",
+    "ember": "#EE613E"
   },
   "exports": [
-    { "frameId": 14762, "file": "exports/routina-icon-ember-1024.png", "width": 1024, "height": 1024, "transparent": false },
-    { "frameId": 14762, "file": "exports/routina-icon-ember.svg", "width": 1024, "height": 1024, "transparent": false },
-    { "frameId": 14771, "file": "exports/routina-adaptive-foreground-1080.png", "width": 1080, "height": 1080, "transparent": true },
-    { "frameId": 14771, "file": "exports/routina-adaptive-foreground.svg", "width": 1080, "height": 1080, "transparent": true },
-    { "frameId": 14774, "file": "exports/routina-adaptive-background-1080.png", "width": 1080, "height": 1080, "transparent": false },
-    { "frameId": 14774, "file": "exports/routina-adaptive-background.svg", "width": 1080, "height": 1080, "transparent": false },
-    { "frameId": 14791, "file": "exports/routina-adaptive-monochrome.svg", "width": 1080, "height": 1080, "transparent": true },
-    { "frameId": 14821, "file": "exports/routina-splash-icon-android12.svg", "width": 288, "height": 288, "transparent": true },
-    { "frameId": 14821, "file": "exports/routina-splash-icon-android12-4x.png", "width": 1152, "height": 1152, "transparent": true },
-    { "frameId": 14756, "file": "exports/routina-splash-ember-preview.png", "width": 780, "height": 1688, "transparent": false },
-    { "frameId": 14825, "file": "exports/routina-brand-review.png", "width": 1600, "height": 1100, "transparent": false },
-    { "frameId": 14802, "file": "exports/routina-small-size-proof.png", "width": 1712, "height": 260, "transparent": false }
-  ]
+    {
+      "frameId": 14762,
+      "file": "exports/routina-icon-ember-1024.png",
+      "width": 1024,
+      "height": 1024,
+      "transparent": false
+    },
+    {
+      "frameId": 14762,
+      "file": "exports/routina-icon-ember.svg",
+      "width": 1024,
+      "height": 1024,
+      "transparent": false
+    },
+    {
+      "frameId": 14771,
+      "file": "exports/routina-adaptive-foreground-1080.png",
+      "width": 1080,
+      "height": 1080,
+      "transparent": true
+    },
+    {
+      "frameId": 14771,
+      "file": "exports/routina-adaptive-foreground.svg",
+      "width": 1080,
+      "height": 1080,
+      "transparent": true
+    },
+    {
+      "frameId": 14774,
+      "file": "exports/routina-adaptive-background-1080.png",
+      "width": 1080,
+      "height": 1080,
+      "transparent": false
+    },
+    {
+      "frameId": 14774,
+      "file": "exports/routina-adaptive-background.svg",
+      "width": 1080,
+      "height": 1080,
+      "transparent": false
+    },
+    {
+      "frameId": 14791,
+      "file": "exports/routina-adaptive-monochrome.svg",
+      "width": 1080,
+      "height": 1080,
+      "transparent": true
+    },
+    {
+      "frameId": 14821,
+      "file": "exports/routina-splash-icon-android12.svg",
+      "width": 288,
+      "height": 288,
+      "transparent": true
+    },
+    {
+      "frameId": 14821,
+      "file": "exports/routina-splash-icon-android12-4x.png",
+      "width": 1152,
+      "height": 1152,
+      "transparent": true
+    },
+    {
+      "frameId": 14756,
+      "file": "exports/routina-splash-ember-preview.png",
+      "width": 780,
+      "height": 1688,
+      "transparent": false
+    },
+    {
+      "frameId": 14825,
+      "file": "exports/routina-brand-review.png",
+      "width": 1600,
+      "height": 1100,
+      "transparent": false
+    },
+    {
+      "frameId": 14802,
+      "file": "exports/routina-small-size-proof.png",
+      "width": 1712,
+      "height": 260,
+      "transparent": false
+    }
+  ],
+  "approval": "Owner explicitly approved the entire branding package on 2026-11-18 in Phase 20A.",
+  "androidIntegration": {
+    "adaptiveBackground": "@color/routina_ember",
+    "legacyLauncherSizes": [
+      48,
+      72,
+      96,
+      144,
+      192
+    ],
+    "nativeSplash": "android/app/src/main/res/drawable/routina_splash.xml",
+    "generator": "tool/prepare_android_branding.ps1",
+    "adaptiveMonochrome": "android/app/src/main/res/drawable/routina_icon_monochrome.xml",
+    "adaptiveForeground": "android/app/src/main/res/drawable/routina_icon_foreground.xml",
+    "flutterSplash": "assets/branding/routina-splash.png"
+  }
 }

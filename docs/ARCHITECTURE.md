@@ -4,7 +4,7 @@
 
 Proyek Flutter stable 3.41.2 dan Dart 3.11.0 melanjutkan scaffold Android/iOS yang sudah ada. Shell menyediakan lima tab dan navigasi Home → Statistik → kembali. Home menampilkan tanggal perangkat dalam bahasa Indonesia. Layar yang belum memiliki implementasi menampilkan pesan sementara. KPI, onboarding, kategori, database, pengingat, timer, dan formulir masuk ke fase yang relevan pada [rencana implementasi](IMPLEMENTATION_PLAN.md).
 
-Baseline platform Windows membangun Android. Validasi iOS memerlukan macOS/Xcode. Identitas platform bawaan `com.example.routina`, ikon aplikasi dan signing rilis masih **OPEN**. Tidak ada kebutuhan konfigurasi flavor atau environment terpisah pada fondasi offline ini.
+Baseline platform Windows membangun Android. Validasi iOS memerlukan macOS/Xcode. Fondasi awal memakai `com.example.routina`. Fase 20A menerapkan identitas Android `com.regacode.routina` dan branding yang disetujui; bundle ID iOS serta signing rilis tetap **OPEN**. Tidak ada kebutuhan konfigurasi flavor atau environment terpisah pada fondasi offline ini.
 
 ## Batas dependensi
 

@@ -10,6 +10,8 @@ import 'package:routina/domain/planner_records.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/app.dart';
 
+import 'support/startup_wait.dart';
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const clock = DeviceClock();
@@ -54,6 +56,7 @@ void main() {
       expect(original.startedOnDevice, isNotNull);
 
       await tester.pumpWidget(RoutinaApp(repository: first));
+      await waitForPlannerStartup(tester);
       await tester.pumpAndSettle();
       expect(find.text('Halo, Uji perangkat.'), findsOneWidget);
       for (final state in [

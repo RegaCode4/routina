@@ -7,10 +7,10 @@ Fase 19 · audit 18 November 2026 · baseline `4bb8fed`. **Persiapan teknis ters
 | Pemeriksaan | Hasil audit dan status |
 | --- | --- |
 | Nama aplikasi | Manifest menampilkan `Routina`; package Dart `routina`. |
-| Android applicationId / namespace | **CONFIRMED pemilik, 18 November 2026:** ID final `com.regacode.routina`. Kode applicationId/namespace masih `com.example.routina`; penerapannya menunggu fase integrasi berikutnya. |
-| Native package dan bridge | `MainActivity`, `BackupImport`, `LocalReminders`, `ReminderReceiver` berada di `com.example.routina`. Kanal `routina/device_clock`, `routina/device_time_zone`, `routina/notifications`, `routina/backup_storage` konsisten dengan Dart. |
-| Ikon | Lima PNG density `ic_launcher` masih ikon template Flutter. [Konsep FigCraft](BRANDING.md) kini menyediakan tiga eksplorasi, master Ember yang direkomendasikan, layer adaptive dan monochrome; review pemilik serta integrasi/perangkat masih PENDING / OPEN-10. |
-| Splash | Native `launch_background.xml` masih background template putih. [Branding FigCraft](BRANDING.md) menyediakan dua eksplorasi, kandidat splash Ember dan aset alpha Android 12+; kode Flutter/native belum berubah. Review visual pemilik, integrasi dan validasi perangkat tetap PENDING. SC-01 lama dipertahankan. |
+| Android applicationId / namespace | **CONFIRMED pemilik, 18 November 2026:** ID final `com.regacode.routina`. ApplicationId, namespace, dan package Kotlin diterapkan pada Fase 20A. Bundle identifier iOS tidak diubah. |
+| Native package dan bridge | `MainActivity`, `BackupImport`, `LocalReminders`, `ReminderReceiver` berada di `com.regacode.routina`. Kanal `routina/device_clock`, `routina/device_time_zone`, `routina/notifications`, `routina/backup_storage` konsisten dengan Dart. |
+| Ikon | **DISETUJUI pemilik Fase 20A:** master 01 / Ember dari FigCraft. Lima PNG legacy 48/72/96/144/192 px, adaptive XML API 26+, foreground vector + background Ember dan monochrome API 33+ tersedia. [Aset dan QA](BRANDING.md). |
+| Splash | **DISETUJUI pemilik Fase 20A:** Ember #EE613E dan mark terpusat tanpa wordmark. Native fallback API 24–30 memakai layer-list; API 31+ memakai SplashScreen platform, dengan vector 288×288 dp. Flutter memakai PNG alpha dari frame yang sama tanpa penundaan tambahan; state startup/error/retry dan alur onboarding dipertahankan. [Metode dan batas QA](BRANDING.md). |
 | Versi | `pubspec.yaml`: `1.0.0+1`, versionName `1.0.0`, versionCode `1`. Nomor belum dinaikkan karena tidak ada versi publik/upgrade kompatibel yang diberikan. |
 | Toolchain | Baseline Flutter 3.41.2 stable / Dart 3.11.0, AGP 8.11.1, Gradle 8.14, Kotlin 2.2.20, target Java 17. Minimum API 24 (Android 7.0), compile/target API 36. |
 
@@ -33,7 +33,7 @@ flutter test --concurrency=1
 
 # Setelah identitas publik dan key tersedia, isi nilai dari register pemilik:
 ./tool/prepare_android_apk.ps1 -AndroidSdk C:/Android/Sdk `
-  -ExpectedApplicationId '<ID-publik-disetujui>' `
+  -ExpectedApplicationId 'com.regacode.routina' `
   -ExpectedCertificateSha256 '<64-hex-sertifikat-pemilik-tanpa-titik-dua>' `
   -PreviousVersionCode <kode-versi-publik-sebelumnya>
 ```
@@ -75,7 +75,7 @@ Pemulihan kegagalan rilis memerlukan investigasi dan build perbaikan dengan code
 
 ## Gerbang publikasi
 
-- [ ] Terapkan ID publik yang telah dikonfirmasi (`com.regacode.routina`); ikon/adaptive icon/splash disetujui dan diintegrasikan, dengan rencana data lokal untuk pergantian ID contoh.
+- [x] Fase 20A: ID `com.regacode.routina` dan branding yang disetujui diterapkan; launcher circle/splash API 36 diuji dan [panduan backup/restore lintas ID](BRANDING.md#pergantian-identitas-dan-data-uji) tersedia. [Cakupan dan batas QA](BRANDING_QA.md).
 - [ ] Key pemilik, backup key teruji, sertifikat tercatat dan signed universal APK diverifikasi.
 - [ ] Upgrade APK, runtime 16 KiB, minimum API 24 dan matriks perangkat fisik dituntaskan.
 - [ ] Keputusan OPEN dan blocker Fase 15–18 yang berlaku pada rilis ditutup dengan bukti; iOS tetap dilacak PENDING tersendiri.

@@ -78,7 +78,7 @@ Tidak ada target numerik penggunaan/retensi yang disepakati.
 
 ### 3.4 Kanal distribusi Android (CONFIRMED · Fase 19)
 
-Routina didistribusikan melalui landing page resmi dengan download universal signed APK secara langsung dan pembaruan manual. Google Play bukan target fase persiapan ini. Aplikasi tetap offline-first. **CONFIRMED pemilik, 18 November 2026:** nama aplikasi `Routina`, Android applicationId final `com.regacode.routina`. ID dicatat untuk fase berikutnya dan belum diterapkan ke kode. Signing key pemilik, persetujuan ikon/splash final, metadata privasi dan kontak tetap memerlukan keputusan atau bukti sebelum rilis; persiapan teknis tidak mengizinkan publikasi. Lihat [persyaratan distribusi](docs/ANDROID_DISTRIBUTION.md) dan [kandidat branding FigCraft](docs/BRANDING.md).
+Routina didistribusikan melalui landing page resmi dengan download universal signed APK secara langsung dan pembaruan manual. Google Play bukan target fase persiapan ini. Aplikasi tetap offline-first. **CONFIRMED pemilik, 18 November 2026:** nama aplikasi `Routina`, Android applicationId final `com.regacode.routina`. Fase 20A menerapkan ID tersebut ke Android. Pemilik telah menyetujui seluruh paket branding 01 / Ember, adaptive + monochrome, warna #EE613E dan splash tanpa wordmark. Signing key pemilik, metadata privasi, kontak dan bukti kesiapan rilis tetap diperlukan sebelum distribusi; persiapan teknis tidak mengizinkan publikasi. Lihat [persyaratan distribusi](docs/ANDROID_DISTRIBUTION.md) dan [kandidat branding FigCraft](docs/BRANDING.md).
 
 ## 4. Alur utama dan arsitektur informasi
 

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:routina/presentation/branding/routina_brand.dart';
 import 'package:routina/application/planner_preview.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/design_system/neo_button.dart';
@@ -41,133 +43,87 @@ class _PlannerStartupState extends State<PlannerStartup> {
       }
       final resumed =
           !snapshot.hasError && widget.repository.onboardingStep > 0;
-      return PreviewPage(
-        footerSpace: 64,
-        footer: snapshot.connectionState != ConnectionState.done
-            ? null
-            : NeoButton(
-                label: snapshot.hasError
-                    ? 'Coba lagi'
-                    : resumed
-                    ? 'Lanjutkan'
-                    : 'Mulai',
-                onPressed: () => setState(() {
-                  if (snapshot.hasError) {
-                    _load = widget.repository.load(PreviewSurface.startup);
-                  } else {
-                    _started = true;
-                  }
-                }),
-              ),
-        body: LayoutBuilder(
-          builder: (context, box) => SingleChildScrollView(
-            padding: const EdgeInsets.all(NeoSpace.page),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: (box.maxHeight - 2 * NeoSpace.page).clamp(
-                  0,
-                  double.infinity,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Center(child: _BrandMark()),
-                  const SizedBox(height: NeoSpace.section),
-                  const Text(
-                    'Routina',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontFamily: NeoType.sans,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 56,
-                      height: 1.1,
+      final ready = snapshot.connectionState == ConnectionState.done;
+      final action = !ready
+          ? null
+          : NeoButton(
+              label: snapshot.hasError
+                  ? 'Coba lagi'
+                  : resumed
+                  ? 'Lanjutkan'
+                  : 'Mulai',
+              onPressed: () => setState(() {
+                if (snapshot.hasError) {
+                  _load = widget.repository.load(PreviewSurface.startup);
+                } else {
+                  _started = true;
+                }
+              }),
+            );
+      final mark = Semantics(
+        label: ready ? 'Routina' : 'Memuat Routina',
+        liveRegion: !ready,
+        image: true,
+        child: const RoutinaBrandMark(),
+      );
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarContrastEnforced: false,
+          systemStatusBarContrastEnforced: false,
+        ),
+        child: Scaffold(
+          backgroundColor: RoutinaBrand.ember,
+          body: snapshot.hasError || resumed
+              ? SafeArea(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(NeoSpace.page),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(child: mark),
+                        if (snapshot.hasError)
+                          const PreviewNotice(
+                            title: 'Data lokal belum terbaca',
+                            message: 'Coba lagi untuk memulai penyiapan.',
+                            warning: true,
+                            icon: Icons.error_outline,
+                          )
+                        else
+                          const PreviewNotice(
+                            title: 'Lanjutkan penyiapan',
+                            message:
+                                'Lanjutkan dari langkah onboarding terakhir.',
+                          ),
+                        if (action != null) ...[
+                          const SizedBox(height: NeoSpace.page),
+                          action,
+                        ],
+                      ],
                     ),
                   ),
-                  const SizedBox(height: NeoSpace.xs),
-                  const Text(
-                    'Perencana aktivitas personal',
-                    textAlign: TextAlign.center,
-                    style: NeoType.body,
-                  ),
-                  if (snapshot.hasError) ...[
-                    const SizedBox(height: NeoSpace.page),
-                    const PreviewNotice(
-                      title: 'Data lokal belum terbaca',
-                      message: 'Coba lagi untuk memulai penyiapan.',
-                      warning: true,
-                      icon: Icons.error_outline,
-                    ),
-                  ] else if (snapshot.connectionState !=
-                      ConnectionState.done) ...[
-                    const SizedBox(height: NeoSpace.page),
-                    const Center(
-                      child: CircularProgressIndicator(
-                        semanticsLabel: 'Memuat Routina',
-                        color: NeoColors.ink,
+                )
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Center(child: mark),
+                    if (action != null)
+                      Positioned(
+                        left: NeoSpace.page,
+                        right: NeoSpace.page,
+                        bottom: 0,
+                        child: SafeArea(
+                          minimum: const EdgeInsets.only(bottom: NeoSpace.page),
+                          child: action,
+                        ),
                       ),
-                    ),
-                  ] else if (resumed) ...[
-                    const SizedBox(height: NeoSpace.page),
-                    const PreviewNotice(
-                      title: 'Lanjutkan penyiapan',
-                      message: 'Lanjutkan dari langkah onboarding terakhir.',
-                    ),
                   ],
-                ],
-              ),
-            ),
-          ),
+                ),
         ),
       );
     },
-  );
-}
-
-class _BrandMark extends StatelessWidget {
-  const _BrandMark();
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 100,
-    height: 92,
-    child: Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 4,
-          top: 7,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: NeoColors.blue,
-              borderRadius: NeoRadius.hero,
-              border: Border.fromBorderSide(NeoLine.outline),
-              boxShadow: NeoShadow.hard,
-            ),
-            child: const SizedBox.square(
-              dimension: 84,
-              child: Icon(Icons.calendar_today_outlined, size: 30),
-            ),
-          ),
-        ),
-        Positioned(
-          right: 1,
-          top: 0,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: NeoColors.yellow,
-              borderRadius: NeoRadius.small,
-              border: Border.fromBorderSide(NeoLine.thin),
-            ),
-            child: const SizedBox.square(
-              dimension: 29,
-              child: Icon(Icons.check, size: 20),
-            ),
-          ),
-        ),
-      ],
-    ),
   );
 }
 

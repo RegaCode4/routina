@@ -48,3 +48,9 @@ Seluruh baris di bagian ini berstatus **MANUAL PENDING** untuk perangkat Android
 - Antrean dapat dipasang ulang oleh receiver Android setelah boot normal dan unlock. Force-stop dan pembatasan latar belakang membatasi pemulihan/pengiriman. Estimasi alarm target timer yang kehilangan acuan boot atau jam dinding menunggu rekonsiliasi ketika aplikasi aktif kembali. [Batas notifikasi](NOTIFICATIONS.md)
 - VoiceOver, build native iOS, permintaan izin, pengiriman, pemindahan DB dan transfer silang platform berstatus **PENDING** pada host Windows.
 - Kebijakan produk tentang nama kategori duplikat tetap OPEN. Kasus lain yang menahan distribusi publik dilacak pada [kesiapan rilis](RELEASE_READINESS.md).
+
+## Fase 20A · identitas dan branding
+
+Enam skenario integrasi pada lima berkas lulus menggunakan ID baru `com.regacode.routina`: offline setup/input/reload/statistik, search, lifecycle, backup v1/rollback, native picker valid/terlalu besar/batal, serta identity/clock/zona/receiver. Notifikasi sintetis tercatat pada NotificationManager dengan package ID baru. AVD API 36 terisolasi digunakan setelah emulator awal kekurangan ruang; data instalasi lama tidak dihapus.
+
+[BRANDING_QA.md](BRANDING_QA.md) memuat screenshot launcher circle, native splash, Flutter startup, onboarding, Home dan pemilih dokumen. Cakupan ini memverifikasi inti visual brand pada API 36; themed rendering, mask OEM lain, runtime API 24–30 dan perangkat fisik tetap MANUAL PENDING. Eksplorasi onboarding 320 dp/200% menunjukkan overflow layout lama, sedangkan state startup baru pada ukuran tersebut lulus tes. Checklist perangkat di atas tetap berlaku.

@@ -1,4 +1,4 @@
-package com.example.routina
+package com.regacode.routina
 
 import android.Manifest
 import android.app.AlarmManager

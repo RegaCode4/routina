@@ -51,7 +51,7 @@ flutter build apk --release
 
 Jalankan perintah build release dengan resolusi paket bawaan Flutter agar registrasi plugin dibuat ulang untuk mode release.
 
-Distribusi Android ditujukan melalui **landing page resmi dengan universal signed APK**. Release tanpa kredensial signing pemilik sekarang gagal; gunakan satu sumber lengkap dari `android/key.properties` atau environment variables. Path relatif `storeFile` dibaca dari `android/`. Lihat [pengelolaan key](docs/ANDROID_SIGNING.md) dan [pipeline APK](docs/ANDROID_DISTRIBUTION.md). Identitas publik masih **DECISION REQUIRED** (`com.example.routina`), key pemilik belum tersedia, ikon/splash final serta upgrade APK masih PENDING. APK unsigned hanya untuk audit lokal dan tidak siap dipublikasikan. AAB dan Google Play bukan target Fase 19.
+Distribusi Android ditujukan melalui **landing page resmi dengan universal signed APK**. Release tanpa kredensial signing pemilik sekarang gagal; gunakan satu sumber lengkap dari `android/key.properties` atau environment variables. Path relatif `storeFile` dibaca dari `android/`. Lihat [pengelolaan key](docs/ANDROID_SIGNING.md) dan [pipeline APK](docs/ANDROID_DISTRIBUTION.md). Fase 20A menerapkan identitas Android `com.regacode.routina` dan [branding yang disetujui](docs/BRANDING.md). Key pemilik, signed release candidate dan upgrade APK tetap PENDING. Instalasi dengan ID lama merupakan aplikasi terpisah; ekspor backup terenkripsi lebih dahulu dan pulihkan lewat alur review di aplikasi baru tanpa menghapus instalasi lama. APK unsigned hanya untuk audit lokal dan tidak siap dipublikasikan. AAB dan Google Play bukan target Fase 19.
 
 ```powershell
 # Build dan pemeriksaan lokal unsigned yang eksplisit; tidak untuk publikasi.

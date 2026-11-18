@@ -1,17 +1,28 @@
-package com.example.routina
+package com.regacode.routina
 
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.core.view.WindowCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.TimeZone
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Continue the same static brand frame in Flutter without a second fade.
+            splashScreen.setOnExitAnimationListener { it.remove() }
+        }
+        super.onCreate(savedInstanceState)
+    }
+
     private var permissionResult: MethodChannel.Result? = null
     private val backupImport = BackupImport(this)
     private var firstReminderSync = true

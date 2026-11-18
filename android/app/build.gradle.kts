@@ -33,7 +33,7 @@ fun signingValue(key: String): String {
 }
 
 android {
-    namespace = "com.example.routina"
+    namespace = "com.regacode.routina"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -47,9 +47,9 @@ android {
     }
 
     defaultConfig {
-        // DECISION REQUIRED: owner must approve the public identity before distribution.
+        // Public identity confirmed by the owner for direct APK distribution.
         // Changing this ID creates a separate app and does not migrate local data.
-        applicationId = "com.example.routina"
+        applicationId = "com.regacode.routina"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

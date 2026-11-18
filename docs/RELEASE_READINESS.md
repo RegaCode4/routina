@@ -1,4 +1,4 @@
-# Kesiapan rilis Routina · Fase 15–19
+# Kesiapan rilis Routina · Fase 15–20A
 
 **Belum siap untuk distribusi publik.** Kanal Android Fase 19 adalah universal signed APK dari landing page resmi, dengan update manual; Google Play/AAB bukan target fase ini. Audit menggunakan [PRD](../PRD.md), [DESIGN](../DESIGN.md), [referensi FigCraft](FIGCRAFT_SCREEN_MAP.md), dan [rencana fase](IMPLEMENTATION_PLAN.md). Status “Ada” menunjukkan jalur produksi yang terhubung ke data lokal. Batas verifikasi perangkat dicatat terpisah.
 
@@ -154,11 +154,24 @@ Pipeline audit unsigned dijalankan end-to-end; jalur signed dengan key pemilik b
 - Sintaks PowerShell, penolakan ID contoh, pemetaan/tautan dokumen relatif dan `git diff --check` lulus. Hanya file Fase 19 masuk stage; artefak build serta seluruh materi signing lokal tetap di luar Git.
 - Android fisik, TalkBack/secure lock screen, runtime 16 KiB serta native iOS/VoiceOver dan pertukaran backup antarplatform tetap **PENDING**, bukan PASS. Semua keputusan OPEN dan blocker Fase 15–18 dipertahankan. Berhenti setelah Fase 19.
 
-## Branding setelah Fase 19 · 18 November 2026
+## Catatan desain awal setelah Fase 19 · sebelum persetujuan Fase 20A
 
 **FigCraft MCP berhasil membuat dan menyimpan desain.** Halaman `12 · Branding & Launch` memuat tiga eksplorasi ikon, dua splash, master rekomendasi, adaptive layers dan preview mask, monochrome, safe zone, proof 24–96 px, aset splash Android 12+, dan papan review. [Inventory dan ekspor](BRANDING.md) tersedia. Rekomendasi adalah **01 / Ember + splash Ember dengan mark terpusat**; persetujuan pemilik atas bentuk final, Ember `#EE613E`, dan splash tanpa wordmark masih PENDING / OPEN-10.
 
 **CONFIRMED pemilik:** nama Routina dan applicationId final `com.regacode.routina`. Kode masih memakai `com.example.routina`; seluruh integrasi Android/Flutter dan build RC menunggu fase berikutnya. Render desain dan geometri safe zone diperiksa, tetapi ini bukan bukti launcher/cold start native. Hasil audit Fase 19 di atas tetap catatan historis. Blocker signing, perangkat, upgrade dan publikasi tidak ditutup oleh pembuatan aset ini.
+
+## Integrasi identitas dan branding · Fase 20A
+
+**COMPLETE untuk lingkup Fase 20A.** Pemilik secara eksplisit menyetujui paket ikon 01 / Ember, adaptive + monochrome, Ember #EE613E dan splash tanpa wordmark. ApplicationId, namespace, tiga package Kotlin termasuk receiver dan bridge kini memakai `com.regacode.routina`. Manifest APK mengonfirmasi activity/receiver serta authority `com.regacode.routina.flutter.share_provider` dan `com.regacode.routina.androidx-startup`. iOS bundle identifier tetap menunggu keputusan terpisah.
+
+Aset berasal dari ekspor FigCraft yang disimpan, lalu dipasang sebagai lima PNG legacy, VectorDrawable foreground/monochrome/splash, adaptive XML API 26/33, fallback splash API 24–30 dan SplashScreen API 31+. Frame awal Flutter memakai mark yang sama; aset dipramuat sebelum first frame dilepas. State retry/resume serta logika onboarding dipertahankan. Frame SC-01–SC-30 tidak diubah. [Sumber dan metode](BRANDING.md).
+
+- Format 10 file Dart, `flutter analyze --no-pub`, 13 widget test terarah dan regresi akhir **164 unit/widget test** lulus; dependency dan pubspec.lock tetap sama.
+- **Enam skenario integrasi Android lulus dalam lima file:** offline journey, search, lifecycle, backup integritas/rollback, native picker valid/terlalu besar/batal, dan probe identity/clock/zona/notifikasi. Record NotificationManager mencatat pengiriman sintetis dari ID baru.
+- APK debug entry point `lib/main.dart` berhasil dibangun dan dipasang pada Android 16/API 36 x86_64. Launcher circle, native splash dan Flutter diperiksa melalui screenshot aktual; warna, pusat mark, proporsi, outline dan shadow cocok pada sampel. [Bukti dan batas visual](BRANDING_QA.md).
+- Emulator awal menolak pemasangan ulang karena ruang tidak cukup. Pengujian dilanjutkan pada AVD API 36 terisolasi; data emulator lama dipertahankan. Wi-Fi/data pada AVD uji bernilai 0 dan tidak ada rute default selama integrasi.
+- Native API 24–30, themed rendering, mask OEM lain, perangkat fisik, TalkBack, dan iOS tetap **MANUAL PENDING**. Uji eksploratif onboarding lama pada 320 dp/200% menunjukkan overflow layout; hal ini dicatat untuk hardening terpisah tanpa mengubah logika onboarding pada Fase 20A.
+- Tidak ada signing key produksi dibuat, build RC/release atau publikasi dijalankan. Fase 20B tidak dimulai.
 
 ## Checklist sebelum distribusi publik
 
@@ -167,6 +180,6 @@ Pipeline audit unsigned dijalankan end-to-end; jalur signed dengan key pemilik b
 - [ ] Verifikasi kebijakan backup OS iOS untuk SQLite lokal pada perangkat, termasuk upgrade dan sidecar, data transfer, serta restore perangkat.
 - [ ] Finalisasi keputusan keamanan OPEN-11. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
 - [ ] Uji perubahan izin saat aplikasi kembali dari Settings, delivery saat reboot, DND/Focus, lock screen, pergantian zona dan penghentian proses pada perangkat. Ketepatan pengiriman mengikuti pembatasan OS.
-- [ ] Terapkan Android applicationId terkonfirmasi `com.regacode.routina`, tetapkan bundle ID iOS, app signing key pemilik untuk APK langsung, Apple Team, persetujuan/integrasi ikon/adaptive icon/splash dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
+- [ ] Tetapkan bundle ID iOS, app signing key pemilik untuk APK langsung, Apple Team dan metadata privasi/penyimpanan; Android ID dan paket branding telah diterapkan pada Fase 20A. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
 - [ ] Validasi TalkBack/VoiceOver, keyboard perangkat, layar kecil fisik, landscape dan tablet. Perluas sampling visual ke varian FigCraft berisiko tinggi.
 - [ ] Putuskan isu OPEN PRD §14 yang memengaruhi rilis, termasuk purge, retensi statistik, reminder dalam Jam Tenang, backup skema lama, DST/all-day lintas zona, dan default profil. Review parameter implementasi sekarang sebelum menjadikannya kebijakan produk.

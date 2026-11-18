@@ -8,6 +8,8 @@ import 'package:routina/presentation/app.dart';
 
 import '../test/support/search_scenario.dart';
 
+import 'support/startup_wait.dart';
+
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const capture = bool.fromEnvironment('ROUTINA_CAPTURE');
@@ -30,6 +32,7 @@ void main() {
     }
     final flow = SearchScenario(tester, () async => tester.pumpAndSettle());
     await tester.pumpWidget(RoutinaApp(repository: repository));
+    await waitForPlannerStartup(tester);
     await flow.settle();
 
     await flow.tab('Kalender');

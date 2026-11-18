@@ -5,6 +5,7 @@ import 'package:routina/application/planner_preview.dart';
 import 'package:routina/data/memory_planner_preview.dart';
 import 'package:routina/domain/preview_event.dart';
 import 'package:routina/presentation/app.dart';
+import 'package:routina/presentation/branding/routina_brand.dart';
 import 'package:routina/presentation/design_system/neo_form_field.dart';
 import 'package:routina/presentation/design_system/neo_navigation.dart';
 import 'package:routina/presentation/design_system/neo_overlays.dart';
@@ -71,9 +72,23 @@ Widget _route(Widget body) => MaterialApp(
 
 void main() {
   testWidgets('SC-01 shows startup load, error and retry', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
     final repo = _repo(ready: false, failOnce: {PreviewSurface.startup});
     await tester.pumpWidget(RoutinaApp(repository: repo));
     expect(find.bySemanticsLabel('Memuat Routina'), findsWidgets);
+    expect(find.text('Routina'), findsNothing);
+    expect(find.text('Perencana aktivitas personal'), findsNothing);
+    expect(
+      tester.getCenter(find.byType(RoutinaBrandMark)),
+      const Offset(195, 422),
+    );
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+      RoutinaBrand.ember,
+    );
     await tester.pump(const Duration(milliseconds: 120));
     expect(find.text('Data lokal belum terbaca'), findsOneWidget);
     await tester.tap(find.text('Coba lagi'));
@@ -81,6 +96,28 @@ void main() {
     expect(find.text('Mulai'), findsOneWidget);
   });
 
+  testWidgets('startup recovery remains reachable on a small screen at 200%', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 568);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      RoutinaApp(
+        repository: _repo(ready: false, failOnce: {PreviewSurface.startup}),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Data lokal belum terbaca'), findsOneWidget);
+    await tester.ensureVisible(find.text('Coba lagi'));
+    await tester.tap(find.text('Coba lagi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mulai'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'SC-02 and SC-03 support resume, optional name, hour validation and permission preview',
     (tester) async {

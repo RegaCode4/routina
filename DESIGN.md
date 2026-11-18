@@ -78,7 +78,7 @@ Ciri **CONFIRMED:** outline tebal 2–3px, hard offset shadow tanpa blur, warna 
 
 ### 2.6 Branding launcher dan splash (18 November 2026)
 
-**CONFIRMED pemilik:** nama `Routina`; Android applicationId final `com.regacode.routina`, belum diterapkan ke kode. [Halaman branding FigCraft dan inventory aset](docs/BRANDING.md) menambahkan tiga eksplorasi ikon, dua splash, layer adaptive, dan kandidat rekomendasi tanpa mengganti frame SC-01 atau flow lama. **PROPOSED / menunggu review pemilik:** monogram R cream/ink di atas Ember `#EE613E` sebagai ekstensi brand, serta splash Ember dengan mark terpusat tanpa wordmark. Palet UI utama tetap mengacu §2.1. Nama frame `Final` menandai kandidat yang direkomendasikan; integrasi Android/Flutter dilakukan pada fase berikutnya setelah review.
+**CONFIRMED pemilik pada Fase 20A:** nama `Routina`, Android applicationId `com.regacode.routina`, paket 01 / Ember (ikon, adaptive + monochrome), warna brand `#EE613E`, serta splash Ember dengan mark terpusat tanpa wordmark. [Inventory dan metode integrasi](docs/BRANDING.md) memakai aset langsung dari halaman 12 FigCraft. ID dan branding diterapkan ke Android; bundle ID iOS tetap menunggu keputusan terpisah. Palet UI utama tetap mengacu §2.1. Frame SC-01–SC-30 dan alur onboarding lama dipertahankan; Flutter meneruskan mark native saat startup, dengan aksi Mulai/Lanjutkan serta error/retry yang sudah ada.
 
 ## 3. Grid, komposisi dan komponen global
 
@@ -175,7 +175,7 @@ Setiap layar di bawah harus disiapkan sebagai artboard/prototipe untuk design-fi
 
 ### SC-01 Splash Screen
 
-- Logo/nama produk (branding final **OPEN**), latar krem atau warna aksen flat, visual sederhana neobrutalism.
+- Branding **CONFIRMED Fase 20A**: monogram R cream/ink pada Ember, tanpa wordmark pada splash. Native dan frame loading Flutter memakai posisi yang konsisten; state siap pada instalasi baru tetap menawarkan Mulai/Lanjutkan.
 - Transisi ke onboarding saat first run; ke Home jika profil/preferensi telah disiapkan.
 - State: normal, startup loading, kegagalan data lokal/migrasi (pesan retry yang tidak menghilangkan data).
 
