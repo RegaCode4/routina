@@ -7,10 +7,10 @@ Fase 19 · audit 18 November 2026 · baseline `4bb8fed`. **Persiapan teknis ters
 | Pemeriksaan | Hasil audit dan status |
 | --- | --- |
 | Nama aplikasi | Manifest menampilkan `Routina`; package Dart `routina`. |
-| Android applicationId / namespace | Keduanya `com.example.routina`. **DECISION REQUIRED:** pemilik menentukan ID publik. Tidak diubah pada fase ini. |
+| Android applicationId / namespace | **CONFIRMED pemilik, 18 November 2026:** ID final `com.regacode.routina`. Kode applicationId/namespace masih `com.example.routina`; penerapannya menunggu fase integrasi berikutnya. |
 | Native package dan bridge | `MainActivity`, `BackupImport`, `LocalReminders`, `ReminderReceiver` berada di `com.example.routina`. Kanal `routina/device_clock`, `routina/device_time_zone`, `routina/notifications`, `routina/backup_storage` konsisten dengan Dart. |
-| Ikon | Lima PNG density `ic_launcher` masih ikon template Flutter; hash mdpi identik dengan template SDK. Tidak ada adaptive icon/monochrome resource. **DECISION REQUIRED / OPEN-10:** aset final milik pemilik dan varian adaptive perlu disetujui serta diuji sebelum publikasi. |
-| Splash | Native `launch_background.xml` masih background template putih, tanpa aset brand dan konfigurasi khusus Android 12+. Flutter memakai Splash Routina. FigCraft SC-01 (950) diperiksa read-only melalui MCP; nama visual bukan persetujuan ikon final. **PENDING:** splash native final dan validasi perangkat. |
+| Ikon | Lima PNG density `ic_launcher` masih ikon template Flutter. [Konsep FigCraft](BRANDING.md) kini menyediakan tiga eksplorasi, master Ember yang direkomendasikan, layer adaptive dan monochrome; review pemilik serta integrasi/perangkat masih PENDING / OPEN-10. |
+| Splash | Native `launch_background.xml` masih background template putih. [Branding FigCraft](BRANDING.md) menyediakan dua eksplorasi, kandidat splash Ember dan aset alpha Android 12+; kode Flutter/native belum berubah. Review visual pemilik, integrasi dan validasi perangkat tetap PENDING. SC-01 lama dipertahankan. |
 | Versi | `pubspec.yaml`: `1.0.0+1`, versionName `1.0.0`, versionCode `1`. Nomor belum dinaikkan karena tidak ada versi publik/upgrade kompatibel yang diberikan. |
 | Toolchain | Baseline Flutter 3.41.2 stable / Dart 3.11.0, AGP 8.11.1, Gradle 8.14, Kotlin 2.2.20, target Java 17. Minimum API 24 (Android 7.0), compile/target API 36. |
 
@@ -75,7 +75,7 @@ Pemulihan kegagalan rilis memerlukan investigasi dan build perbaikan dengan code
 
 ## Gerbang publikasi
 
-- [ ] ID publik, ikon/adaptive icon/splash disetujui; identitas contoh dihilangkan dengan rencana data lokal.
+- [ ] Terapkan ID publik yang telah dikonfirmasi (`com.regacode.routina`); ikon/adaptive icon/splash disetujui dan diintegrasikan, dengan rencana data lokal untuk pergantian ID contoh.
 - [ ] Key pemilik, backup key teruji, sertifikat tercatat dan signed universal APK diverifikasi.
 - [ ] Upgrade APK, runtime 16 KiB, minimum API 24 dan matriks perangkat fisik dituntaskan.
 - [ ] Keputusan OPEN dan blocker Fase 15–18 yang berlaku pada rilis ditutup dengan bukti; iOS tetap dilacak PENDING tersendiri.

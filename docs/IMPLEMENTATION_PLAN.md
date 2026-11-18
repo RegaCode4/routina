@@ -83,6 +83,10 @@ Semua FR berstatus **CONFIRMED** untuk cakupan produk. Penempatan, batas antar f
 
 Jika keputusan produk diperbarui, catat persetujuan dan nomor wawancara di PRD. Sinkronkan DESIGN dan pemetaan bila layar atau alur berubah.
 
+## Tambahan lingkup branding setelah Fase 19 · 18 November 2026
+
+Permintaan pemilik mengonfirmasi **Routina** dan Android applicationId final **`com.regacode.routina`**. Fase desain ini membuat ikon, konsep adaptive, splash, eksplorasi dan ekspor di FigCraft; [hasil dan handoff](BRANDING.md) tersedia. Kandidat visual dan warna Ember menunggu review pemilik (sisa OPEN-10). Penerapan ID/aset ke kode, build release candidate, dan publikasi belum termasuk lingkup ini. Catatan OPEN-10 di atas merupakan register awal; nama telah dikonfirmasi, sedangkan persetujuan logo/ikon/splash tetap terbuka.
+
 ## Risiko dan verifikasi
 
 | Risiko | Dependency | Mitigasi **PROPOSED** |

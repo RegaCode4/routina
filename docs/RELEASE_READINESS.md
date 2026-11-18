@@ -154,6 +154,12 @@ Pipeline audit unsigned dijalankan end-to-end; jalur signed dengan key pemilik b
 - Sintaks PowerShell, penolakan ID contoh, pemetaan/tautan dokumen relatif dan `git diff --check` lulus. Hanya file Fase 19 masuk stage; artefak build serta seluruh materi signing lokal tetap di luar Git.
 - Android fisik, TalkBack/secure lock screen, runtime 16 KiB serta native iOS/VoiceOver dan pertukaran backup antarplatform tetap **PENDING**, bukan PASS. Semua keputusan OPEN dan blocker Fase 15–18 dipertahankan. Berhenti setelah Fase 19.
 
+## Branding setelah Fase 19 · 18 November 2026
+
+**FigCraft MCP berhasil membuat dan menyimpan desain.** Halaman `12 · Branding & Launch` memuat tiga eksplorasi ikon, dua splash, master rekomendasi, adaptive layers dan preview mask, monochrome, safe zone, proof 24–96 px, aset splash Android 12+, dan papan review. [Inventory dan ekspor](BRANDING.md) tersedia. Rekomendasi adalah **01 / Ember + splash Ember dengan mark terpusat**; persetujuan pemilik atas bentuk final, Ember `#EE613E`, dan splash tanpa wordmark masih PENDING / OPEN-10.
+
+**CONFIRMED pemilik:** nama Routina dan applicationId final `com.regacode.routina`. Kode masih memakai `com.example.routina`; seluruh integrasi Android/Flutter dan build RC menunggu fase berikutnya. Render desain dan geometri safe zone diperiksa, tetapi ini bukan bukti launcher/cold start native. Hasil audit Fase 19 di atas tetap catatan historis. Blocker signing, perangkat, upgrade dan publikasi tidak ditutup oleh pembuatan aset ini.
+
 ## Checklist sebelum distribusi publik
 
 - [x] Pencarian dan filter Kalender serta Rutinitas lulus validasi FR-09 Fase 16.
@@ -161,6 +167,6 @@ Pipeline audit unsigned dijalankan end-to-end; jalur signed dengan key pemilik b
 - [ ] Verifikasi kebijakan backup OS iOS untuk SQLite lokal pada perangkat, termasuk upgrade dan sidecar, data transfer, serta restore perangkat.
 - [ ] Finalisasi keputusan keamanan OPEN-11. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
 - [ ] Uji perubahan izin saat aplikasi kembali dari Settings, delivery saat reboot, DND/Focus, lock screen, pergantian zona dan penghentian proses pada perangkat. Ketepatan pengiriman mengikuti pembatasan OS.
-- [ ] Tetapkan application/bundle ID publik, app signing key pemilik untuk APK langsung, Apple Team, ikon/adaptive icon/splash final dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
+- [ ] Terapkan Android applicationId terkonfirmasi `com.regacode.routina`, tetapkan bundle ID iOS, app signing key pemilik untuk APK langsung, Apple Team, persetujuan/integrasi ikon/adaptive icon/splash dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
 - [ ] Validasi TalkBack/VoiceOver, keyboard perangkat, layar kecil fisik, landscape dan tablet. Perluas sampling visual ke varian FigCraft berisiko tinggi.
 - [ ] Putuskan isu OPEN PRD §14 yang memengaruhi rilis, termasuk purge, retensi statistik, reminder dalam Jam Tenang, backup skema lama, DST/all-day lintas zona, dan default profil. Review parameter implementasi sekarang sebelum menjadikannya kebijakan produk.

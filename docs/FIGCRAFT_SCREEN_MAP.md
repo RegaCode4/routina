@@ -14,6 +14,14 @@ Audit Fase 00, 16 November 2026. Sumber pemetaan [DESIGN.md §5](../DESIGN.md#5-
 
 Halaman MCP diperiksa secara rekursif untuk nama, ukuran, teks, komponen, dan relasi navigasi. Sumber dibuka tanpa menyimpan perubahan. Bukti visual berupa pemeriksaan preview Home, kolase referensi, serta render sampel MCP untuk Home, profil lokal, detail tugas, timer rutinitas, proposal split, Statistik mingguan, izin notifikasi, dan konflik restore. Pengujian visual Flutter dan validasi pixel-per-pixel belum berlaku.
 
+## Tambahan branding · 18 November 2026
+
+FigCraft MCP headless menambahkan halaman **12 · Branding & Launch** (14726) pada dokumen sumber, dengan **18 frame branding**. Halaman 00–11, 315 artboard layar dan flow sebelumnya dipertahankan. Ini tambahan desain setelah Fase 19, bukan penggantian pemetaan SC-01–SC-30 atau implementasi startup.
+
+Rekomendasi untuk review: `BRAND_Icon_Final` (14762, 1024×1024), berdasarkan `BRAND_Icon_Exploration_01`, dan `BRAND_Splash_Final` (14756, 390×844). Tiga eksplorasi ikon, dua splash, adaptive foreground/background/composite, tiga preview mask, monochrome, safe zone, proof ukuran kecil, aset splash Android 12+, dan papan review tersedia. [Inventory seluruh nama/ID frame dan ekspor](BRANDING.md#sumber-desain-dan-inventory-frame).
+
+**CONFIRMED:** nama Routina dan applicationId final `com.regacode.routina` dari permintaan pemilik. **PROPOSED / OPEN-10:** persetujuan pasangan visual rekomendasi dan Ember `#EE613E`. Token existing digunakan kembali; ditambah `brand/ember-proposed`. Render baru diperiksa melalui MCP, belum diuji pada launcher atau runtime Android/Flutter.
+
 ## Komponen yang dapat dibaca
 
 | Area | Nama komponen aktual pada halaman 00 |

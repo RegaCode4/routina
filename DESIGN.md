@@ -76,6 +76,10 @@ Ciri **CONFIRMED:** outline tebal 2–3px, hard offset shadow tanpa blur, warna 
 - Jadwal rekomendasi **tidak boleh tampak seolah telah disimpan** sebelum pengguna mengonfirmasi.
 - Haptic/audio tidak wajib; hormati pengaturan aksesibilitas dan OS.
 
+### 2.6 Branding launcher dan splash (18 November 2026)
+
+**CONFIRMED pemilik:** nama `Routina`; Android applicationId final `com.regacode.routina`, belum diterapkan ke kode. [Halaman branding FigCraft dan inventory aset](docs/BRANDING.md) menambahkan tiga eksplorasi ikon, dua splash, layer adaptive, dan kandidat rekomendasi tanpa mengganti frame SC-01 atau flow lama. **PROPOSED / menunggu review pemilik:** monogram R cream/ink di atas Ember `#EE613E` sebagai ekstensi brand, serta splash Ember dengan mark terpusat tanpa wordmark. Palet UI utama tetap mengacu §2.1. Nama frame `Final` menandai kandidat yang direkomendasikan; integrasi Android/Flutter dilakukan pada fase berikutnya setelah review.
+
 ## 3. Grid, komposisi dan komponen global
 
 ### 3.1 Layout aplikasi
