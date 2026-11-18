@@ -12,6 +12,25 @@ val signingProperties = Properties()
 if (signingPropertiesFile.isFile) {
     signingPropertiesFile.inputStream().use(signingProperties::load)
 }
+// Use one complete source; never silently mix local and CI credentials.
+val signingEnvironment = mapOf(
+    "storeFile" to "ROUTINA_KEYSTORE_FILE",
+    "storePassword" to "ROUTINA_KEYSTORE_PASSWORD",
+    "keyAlias" to "ROUTINA_KEY_ALIAS",
+    "keyPassword" to "ROUTINA_KEY_PASSWORD",
+)
+val useSigningEnvironment = signingEnvironment.values.any { System.getenv(it) != null }
+val hasReleaseSigning = useSigningEnvironment || signingPropertiesFile.isFile
+val allowUnsignedAudit = System.getenv("ROUTINA_ALLOW_UNSIGNED_RELEASE") == "true"
+
+fun signingValue(key: String): String {
+    val value = if (useSigningEnvironment) System.getenv(signingEnvironment.getValue(key))
+        else signingProperties.getProperty(key)
+    require(!value.isNullOrBlank()) {
+        "Missing release signing setting: $key. See docs/ANDROID_SIGNING.md."
+    }
+    return value
+}
 
 android {
     namespace = "com.example.routina"
@@ -28,7 +47,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // DECISION REQUIRED: owner must approve the public identity before distribution.
+        // Changing this ID creates a separate app and does not migrate local data.
         applicationId = "com.example.routina"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -38,22 +58,33 @@ android {
         versionName = flutter.versionName
     }
 
-    if (signingPropertiesFile.isFile) {
+    if (hasReleaseSigning) {
         signingConfigs.create("release") {
-            fun requiredProperty(key: String): String =
-                requireNotNull(signingProperties.getProperty(key)?.takeIf { it.isNotBlank() }) {
-                    "Missing $key in android/key.properties"
-                }
-            storeFile = rootProject.file(requiredProperty("storeFile"))
-            storePassword = requiredProperty("storePassword")
-            keyAlias = requiredProperty("keyAlias")
-            keyPassword = requiredProperty("keyPassword")
+            storeFile = rootProject.file(signingValue("storeFile"))
+            require(storeFile!!.isFile) { "Release keystore file does not exist." }
+            storePassword = signingValue("storePassword")
+            keyAlias = signingValue("keyAlias")
+            require(!keyAlias.equals("androiddebugkey", ignoreCase = true)) {
+                "Android debug signing is forbidden for release."
+            }
+            keyPassword = signingValue("keyPassword")
         }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release")
+        }
+    }
+}
+
+// Enforce this only for release task graphs so debug development remains available.
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.project == project && it.name.contains("Release") }) {
+        check(hasReleaseSigning || allowUnsignedAudit) {
+            "Release signing required. Configure owner credentials; " +
+                "ROUTINA_ALLOW_UNSIGNED_RELEASE=true is for local audit ONLY. " +
+                "See docs/ANDROID_SIGNING.md."
         }
     }
 }

@@ -13,7 +13,7 @@ import 'package:routina/presentation/planner/home_screen.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/fake_notifications.dart';
-import 'task_screens_test.dart' show settle, tap;
+import 'task_screens_test.dart' show readStore, settle, tap;
 
 void main() {
   final now = DateTime.utc(2026, 11, 16, 8);
@@ -143,10 +143,14 @@ void main() {
         () =>
             platform.quiet?.exceptions.contains(ReminderKind.deadline) ?? false,
       );
-      final profile = (await tester.runAsync(store.profiles.all))!.single;
+      final profile = (await readStore(tester, store.profiles.all))!.single;
       expect(profile.preferences.quietEnabled, isTrue);
       expect(profile.preferences.quietExceptions, {ReminderKind.deadline});
       expect(platform.quiet?.exceptions, {ReminderKind.deadline});
+      // Unmount listeners before draining SQLite work initiated by refreshes.
+      await tester.pumpWidget(const SizedBox.shrink());
+      await readStore(tester, store.profiles.all);
+      await settle(tester);
       expect(tester.takeException(), isNull);
     },
   );

@@ -76,6 +76,10 @@ Tidak ada target numerik penggunaan/retensi yang disepakati.
 
 - Akun email dan password, backend terkelola, sinkronisasi cloud, strategi migrasi database lokal, penyelesaian konflik perangkat, kebijakan keamanan dan privasi produksi. Pemilihan vendor/backend masih **OPEN**.
 
+### 3.4 Kanal distribusi Android (CONFIRMED · Fase 19)
+
+Routina didistribusikan melalui landing page resmi dengan download universal signed APK secara langsung dan pembaruan manual. Google Play bukan target fase persiapan ini. Aplikasi tetap offline-first. Identitas publik, signing key pemilik, ikon/splash final, metadata privasi dan kontak tetap memerlukan keputusan atau bukti sebelum rilis; persiapan teknis tidak mengizinkan publikasi. Lihat [persyaratan distribusi](docs/ANDROID_DISTRIBUTION.md).
+
 ## 4. Alur utama dan arsitektur informasi
 
 ### 4.1 Pertama kali memakai aplikasi

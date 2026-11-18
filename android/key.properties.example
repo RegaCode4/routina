@@ -1,0 +1,7 @@
+# Copy to ignored android/key.properties; replace all values locally.
+# Prefer a keystore outside the repository. Use forward slashes on Windows.
+# Relative paths resolve from android/, not android/app/.
+storeFile=C:/private/routina/owner-release.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=REPLACE_LOCALLY
+keyPassword=REPLACE_LOCALLY

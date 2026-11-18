@@ -51,7 +51,14 @@ flutter build apk --release
 
 Jalankan perintah build release dengan resolusi paket bawaan Flutter agar registrasi plugin dibuat ulang untuk mode release.
 
-APK release hanya ditandatangani bila `android/key.properties` tersedia dan berisi `storeFile`, `storePassword`, `keyAlias`, dan `keyPassword`. Path relatif `storeFile` dibaca dari direktori `android/`. Simpan keystore dan kredensial di luar Git. APK unsigned dapat diperiksa sebagai artefak build. Untuk distribusi Android, tetapkan application ID milik proyek, siapkan upload key, lalu jalankan `flutter build appbundle --release`. [Panduan signing Flutter](https://docs.flutter.dev/deployment/android#sign-the-app)
+Distribusi Android ditujukan melalui **landing page resmi dengan universal signed APK**. Release tanpa kredensial signing pemilik sekarang gagal; gunakan satu sumber lengkap dari `android/key.properties` atau environment variables. Path relatif `storeFile` dibaca dari `android/`. Lihat [pengelolaan key](docs/ANDROID_SIGNING.md) dan [pipeline APK](docs/ANDROID_DISTRIBUTION.md). Identitas publik masih **DECISION REQUIRED** (`com.example.routina`), key pemilik belum tersedia, ikon/splash final serta upgrade APK masih PENDING. APK unsigned hanya untuk audit lokal dan tidak siap dipublikasikan. AAB dan Google Play bukan target Fase 19.
+
+```powershell
+# Build dan pemeriksaan lokal unsigned yang eksplisit; tidak untuk publikasi.
+./tool/prepare_android_apk.ps1 -AndroidSdk C:/Android/Sdk -AuditUnsigned
+```
+
+[Spesifikasi landing page](docs/LANDING_PAGE_DISTRIBUTION.md) dan [status Android Developer Verification](docs/ANDROID_DEVELOPER_VERIFICATION.md) melengkapi gerbang rilis. Tidak ada APK yang diterbitkan pada fase persiapan ini.
 
 Pada macOS, gunakan `flutter build ios --release --no-codesign` untuk validasi kompilasi tanpa signing. Untuk distribusi, tetapkan bundle identifier, team dan provisioning melalui workspace Runner, lalu jalankan `flutter build ipa --release`. [Panduan distribusi iOS](https://docs.flutter.dev/deployment/ios)
 

@@ -43,3 +43,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Signing material may live anywhere locally; never track it.
+**/key.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*.pk8
+*.pem
+.env
+.env.*

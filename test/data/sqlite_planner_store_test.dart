@@ -664,6 +664,109 @@ void main() {
     },
   );
 
+  test(
+    'schema 9 upgrade preserves rows and the active timer in schema 10',
+    () async {
+      final legacy = await factory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 9,
+          onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
+          onCreate: (db, version) async {
+            await createPlannerSchemaV1(db);
+            await migratePlannerSchema(db, 1, version);
+          },
+        ),
+      );
+      for (final (id, kind, parent) in [
+        ('routine-v9', 'routine', null),
+        ('day-v9', 'routineOccurrence', 'routine-v9'),
+        ('task-v9', 'task', null),
+      ]) {
+        await legacy.insert('records', {
+          'id': id,
+          'kind': kind,
+          'parent_id': parent,
+          'revision': 2,
+          'created_at_us': 1,
+          'updated_at_us': 2,
+        });
+      }
+      await legacy.insert('routines', {
+        'id': 'routine-v9',
+        'title': 'Timer sebelum update',
+        'target_type': 'duration',
+        'target_duration_us': const Duration(minutes: 30).inMicroseconds,
+        'checklist': '[]',
+      });
+      await legacy.insert('routine_occurrences', {
+        'id': 'day-v9',
+        'routine_id': 'routine-v9',
+        'local_day': '2026-11-16',
+        'status': 'planned',
+        'checked_items': '[]',
+      });
+      await legacy.insert('routine_timers', {
+        'occurrence_id': 'day-v9',
+        'id': 'timer-v9',
+        'accumulated_us': const Duration(minutes: 4).inMicroseconds,
+        'running_since_us': base.microsecondsSinceEpoch,
+      });
+      await legacy.insert('tasks', {
+        'id': 'task-v9',
+        'title': 'Tugas sebelum update',
+        'status': 'planned',
+        'deadline_us': at(9).instant.microsecondsSinceEpoch,
+        'deadline_zone': asiaJakarta,
+        'deadline_mode': 'originalZone',
+      });
+      await legacy.insert('reminder_progress', {
+        'id': 'reminder-v9',
+        'first_seen_us': base.microsecondsSinceEpoch,
+      });
+      final tables = await legacy.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      );
+      final before = <String, List<Map<String, Object?>>>{};
+      for (final row in tables) {
+        final name = row['name']! as String;
+        before[name] = await legacy.query(name);
+      }
+      await legacy.close();
+
+      final migrated = await open();
+      final timer = (await migrated.routineTimers()).single;
+      expect(timer.id, 'timer-v9');
+      expect(timer.accumulated, const Duration(minutes: 4));
+      expect(timer.runningSince, base);
+      expect(timer.startedOnDevice, isNull);
+      expect(
+        (await migrated.tasks.find('task-v9'))!.deadline!.zoneId,
+        asiaJakarta,
+      );
+      await migrated.close();
+
+      final inspect = await factory.openDatabase(path);
+      try {
+        expect(await inspect.getVersion(), 10);
+        expect(await inspect.rawQuery('PRAGMA integrity_check'), [
+          {'integrity_check': 'ok'},
+        ]);
+        expect(await inspect.rawQuery('PRAGMA foreign_key_check'), isEmpty);
+        for (final entry in before.entries) {
+          expect(
+            await inspect.query(entry.key),
+            entry.value,
+            reason: entry.key,
+          );
+        }
+        expect(await inspect.query('routine_timer_clocks'), isEmpty);
+      } finally {
+        await inspect.close();
+      }
+    },
+  );
+
   test('failed migration and newer version leave database intact', () async {
     final old = await factory.openDatabase(
       path,

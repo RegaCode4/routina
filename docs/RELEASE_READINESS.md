@@ -1,6 +1,6 @@
-# Kesiapan rilis Routina · Fase 15–18
+# Kesiapan rilis Routina · Fase 15–19
 
-**Belum siap untuk distribusi publik.** Audit menggunakan [PRD](../PRD.md), [DESIGN](../DESIGN.md), [referensi FigCraft](FIGCRAFT_SCREEN_MAP.md), dan [rencana fase](IMPLEMENTATION_PLAN.md). Status “Ada” menunjukkan jalur produksi yang terhubung ke data lokal. Batas verifikasi perangkat dicatat terpisah.
+**Belum siap untuk distribusi publik.** Kanal Android Fase 19 adalah universal signed APK dari landing page resmi, dengan update manual; Google Play/AAB bukan target fase ini. Audit menggunakan [PRD](../PRD.md), [DESIGN](../DESIGN.md), [referensi FigCraft](FIGCRAFT_SCREEN_MAP.md), dan [rencana fase](IMPLEMENTATION_PLAN.md). Status “Ada” menunjukkan jalur produksi yang terhubung ke data lokal. Batas verifikasi perangkat dicatat terpisah.
 
 ## Cakupan FR
 
@@ -69,7 +69,7 @@ Metadata satu frame 390×844 per kelompok diperiksa melalui FigCraft MCP. Entri 
 ## Dependency dan konfigurasi platform
 
 - `flutter pub outdated --show-all --json` melaporkan 91 paket terkunci dan nol flag advisory, retracted atau discontinued dalam metadata Pub. Versi utama terkunci mencakup `cryptography` 2.9.0, `file_picker` 11.0.3, `share_plus` 11.1.0, `sqflite` 2.4.2+1, dan `timezone` 0.10.1. Mayor baru file picker dan share perlu evaluasi iOS minimum dan AGP. Audit native serta review kriptografi tetap diperlukan.
-- Android memakai AGP 8.11.1, Gradle 8.14, Java target 17, SDK minimum 24 serta compile/target 36. Release memuat data produksi dan memakai konfigurasi signing lokal bila tersedia. Manifest mengatur `allowBackup=false`, dengan pengecualian semua domain untuk cloud backup dan device transfer. Pemilih file tetap mendukung ekspor manual. [Android Auto Backup](https://developer.android.com/identity/data/autobackup)
+- Android memakai AGP 8.11.1, Gradle 8.14, Java target 17, SDK minimum 24 serta compile/target 36. Release memuat data produksi dan sejak Fase 19 mewajibkan signing pemilik melalui file lokal atau environment; unsigned hanya diizinkan untuk audit eksplisit. Manifest mengatur `allowBackup=false`, dengan pengecualian semua domain untuk cloud backup dan device transfer. Pemilih file tetap mendukung ekspor manual. [Android Auto Backup](https://developer.android.com/identity/data/autobackup)
 - iOS menargetkan iOS 13.0. Host audit Windows. Build distribusi memerlukan toolchain yang diterima App Store Connect, identitas, dan signing proyek. [Persyaratan Apple](https://developer.apple.com/news/upcoming-requirements/)
 - Flutter 3.41.2 masih dapat meregistrasi plugin khusus pengembangan pada iOS. Periksa apakah plugin integrasi masih ikut di build publik saat memvalidasi paket iOS. [Flutter issue 163874](https://github.com/flutter/flutter/issues/163874)
 - `sqflite_darwin` memakai Documents sebagai path default. SQLite iOS belum memiliki pengecualian backup OS yang diverifikasi. Perubahan lokasi database perlu migrasi yang mempertahankan data lama beserta jurnal/sidecar dan pengujian rollback pada perangkat. [Dokumentasi backup Apple](https://developer.apple.com/documentation/foundation/optimizing-your-app-s-data-for-icloud-backup)
@@ -128,6 +128,32 @@ Jalur produksi membaca proyeksi SQLite yang sama dengan kalender dan daftar ruti
 - Empat tes integrasi Android lulus melalui alur offline, pencarian/filter, backup dan rollback, serta timer dengan clock Android dan pembukaan ulang SQLite. APK debug berhasil dibangun dan dipasang.
 - Perangkat fisik Android, lock screen aman, TalkBack, dan keyboard fisik tetap **MANUAL PENDING**. iOS native dan VoiceOver tetap **PENDING**. Kebijakan pemulihan durasi ketika perangkat mati tetap OPEN-08 dan kebijakan nama kategori duplikat tetap OPEN-03. [Matriks bukti dan checklist perangkat](ANDROID_DEVICE_QA.md)
 
+## Persiapan distribusi APK langsung · Fase 19
+
+Audit dimulai dari `4bb8fed` pada `main`, working tree bersih. Instruksi root, PRD/DESIGN, rencana/peta FigCraft, dependency terkunci, konfigurasi Android dan hasil Fase 18 diperiksa. FigCraft dibuka read-only dan SC-01 (950) diperiksa; tidak ada perubahan widget produksi atau artefak desain, sehingga tidak ada perbandingan render UI baru pada fase ini.
+
+| Area | Bukti / status |
+| --- | --- |
+| Kanal | **CONFIRMED:** download universal signed APK melalui landing page resmi, update manual. Catatan AAB Fase 15 bersifat historis dan bukan deliverable/gerbang Android fase ini. |
+| Identitas | Label `Routina`; applicationId/namespace/native package masih `com.example.routina`. **DECISION REQUIRED:** ID publik pemilik, ikon/adaptive icon dan splash native final. Template launcher mdpi identik dengan SDK Flutter; tidak ditetapkan identitas pengganti sepihak. |
+| Signing | **Pipeline tersedia, key pemilik PENDING.** Release tanpa kredensial ditolak pada percobaan nyata. File lokal atau empat environment variables harus lengkap, tidak dicampur. Alias debug standar ditolak, tidak ada fallback debug. Pipeline signed memerlukan ID publik, fingerprint pemilik dan versionCode yang meningkat. Tidak dibuat key produksi. |
+| Rahasia | Tidak ada `android/key.properties` atau environment signing dalam sesi. Pencarian nama file key/keystore pada riwayat Git lokal dan marker private key pada file terlacak tidak menemukan hasil. Template hanya placeholder; ignore diperluas dan diperiksa. Ini pemeriksaan lokal terarah, bukan jaminan audit seluruh rahasia historis/remote. |
+| Artefak audit | `build/app/outputs/flutter-apk/app-release.apk`, salinan berlabel `build/distribution/audit-unsigned/routina-1.0.0-1-universal-UNSIGNED-AUDIT.apk`, **63.914.078 byte (60,95 MiB)**. VersionName `1.0.0`, versionCode `1`, minimum API 24, target 36, ABI ARM32/ARM64/x86_64. |
+| Integritas / signature | SHA-256 APK `9f5be9e53a00bbc30ebb463c5c4bebef3a79b2aacf64e1a274a6aad1d4ab0498`. `apksigner verify --verbose --print-certs` menghasilkan **DOES NOT VERIFY / Missing META-INF/MANIFEST.MF**, sesuai artefak unsigned. **Bukan signed release siap publikasi.** Fingerprint pemilik belum tersedia. |
+| Alignment | `zipalign -c -P 16 -v 4` lulus; seluruh LOAD pada delapan library ELF64 arm64/x86_64 lolos pemeriksaan alignment 16 KiB. **Runtime 16 KiB PENDING**, emulator tersedia memakai halaman 4096 byte. |
+| Manifest / file | Tidak ada INTERNET, storage luas atau REQUEST_INSTALL_PACKAGES; tidak debuggable; `allowBackup=false`. Dua izin sistem notifikasi/boot dan satu izin signature internal AndroidX. Launcher exported; receiver planner/share serta provider share/startup tidak exported; profile installer exported dilindungi `DUMP`. Kedua XML backup mengecualikan seluruh domain dan Share Plus dibatasi ke cache `share_plus/`. |
+| Update dan data | Lokasi SQLite, skema lokal **10**, backup v1/skema pertukaran **9** dipertahankan. Uji baru 9→10 memastikan seluruh baris tabel lama, timer aktif, task/deadline, reminder progress, integrity dan foreign key tetap utuh. **Upgrade APK PENDING:** pasangan lama/baru dengan sertifikat pemilik kompatibel tidak tersedia. |
+| Website / verification | [Spesifikasi website](LANDING_PAGE_DISTRIBUTION.md), [signing dan backup key](ANDROID_SIGNING.md), [checklist upgrade](ANDROID_DISTRIBUTION.md#upgrade-manual-dan-integritas-data), dan [verification terkini](ANDROID_DEVELOPER_VERIFICATION.md) tersedia. Status Routina **PENDING / belum diverifikasi dari konsol**. Tidak ada website/backend/domain/hosting dibuat atau APK diterbitkan. |
+
+Pipeline audit unsigned dijalankan end-to-end; jalur signed dengan key pemilik belum dapat diuji karena kredensial tidak tersedia. Percobaan awal menemukan nama ZIP XML yang dipendekkan resource shrinking; resolver kini memakai resource table APK final. Pipeline juga menolak public applicationId contoh sebelum build. Metadata JSON, checksum, badging, manifest, XML backup/share, signature dan laporan zipalign disimpan di direktori artefak audit yang diabaikan Git.
+
+- `flutter pub get --offline --enforce-lockfile` dan pemeriksaan format 111 file Dart lulus; lockfile tidak berubah.
+- `flutter analyze` awal dan setelah perubahan tes lulus. Tes terarah lulus **13 tes**. Run host awal mencatat 161 lulus dan satu kegagalan timer tunggu SQLite saat teardown widget notifikasi. Harness kini memompa frame sambil menunggu SQLite serta melepas listener sebelum menguras pekerjaan tertunda; perilaku aplikasi tidak diubah.
+- Regresi host penuh terakhir lulus **163 unit/widget test** dengan concurrency 1, setelah build Android selesai. Cakupan mencakup Kalender, Tugas, Rutinitas, Smart Scheduling, KPI/Statistik, pencarian, Trash, backup v1, rollback dan migrasi.
+- **Empat integrasi Android lulus**, masing-masing per berkas pada emulator Android 16/API 36 x86_64 dengan build debug: `offline_journey_test`, `activity_search_test`, `backup_integrity_test` dan `device_lifecycle_test`. Cakupan meliputi penyiapan/input/reload/statistik, filter pada SQLite native, backup v1/rollback kegagalan penulisan, serta jam monotonik dan timer setelah reopen SQLite. Wi-Fi/data seluler tercatat 0 dan `ip route` kosong selama uji, lalu kedua pengaturan dipulihkan ke nilai awal 1. Pemilih dokumen sistem tidak diulang pada Fase 19. Ini bukan uji upgrade atau pemasangan APK release unsigned.
+- Sintaks PowerShell, penolakan ID contoh, pemetaan/tautan dokumen relatif dan `git diff --check` lulus. Hanya file Fase 19 masuk stage; artefak build serta seluruh materi signing lokal tetap di luar Git.
+- Android fisik, TalkBack/secure lock screen, runtime 16 KiB serta native iOS/VoiceOver dan pertukaran backup antarplatform tetap **PENDING**, bukan PASS. Semua keputusan OPEN dan blocker Fase 15–18 dipertahankan. Berhenti setelah Fase 19.
+
 ## Checklist sebelum distribusi publik
 
 - [x] Pencarian dan filter Kalender serta Rutinitas lulus validasi FR-09 Fase 16.
@@ -135,6 +161,6 @@ Jalur produksi membaca proyeksi SQLite yang sama dengan kalender dan daftar ruti
 - [ ] Verifikasi kebijakan backup OS iOS untuk SQLite lokal pada perangkat, termasuk upgrade dan sidecar, data transfer, serta restore perangkat.
 - [ ] Finalisasi keputusan keamanan OPEN-11. Uji file terenkripsi yang sama lintas Android/iOS, pemilih file, Share Sheet, pembatalan, korupsi dan rollback pada perangkat.
 - [ ] Uji perubahan izin saat aplikasi kembali dari Settings, delivery saat reboot, DND/Focus, lock screen, pergantian zona dan penghentian proses pada perangkat. Ketepatan pengiriman mengikuti pembatasan OS.
-- [ ] Tetapkan application/bundle ID publik, upload key, Apple Team, ikon/splash final dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
+- [ ] Tetapkan application/bundle ID publik, app signing key pemilik untuk APK langsung, Apple Team, ikon/adaptive icon/splash final dan metadata privasi/penyimpanan. Verifikasi artefak distribusi bertanda tangan di kedua platform, termasuk kompatibilitas 16 KiB Android. [Panduan Android 16 KiB](https://developer.android.com/guide/practices/page-sizes)
 - [ ] Validasi TalkBack/VoiceOver, keyboard perangkat, layar kecil fisik, landscape dan tablet. Perluas sampling visual ke varian FigCraft berisiko tinggi.
 - [ ] Putuskan isu OPEN PRD §14 yang memengaruhi rilis, termasuk purge, retensi statistik, reminder dalam Jam Tenang, backup skema lama, DST/all-day lintas zona, dan default profil. Review parameter implementasi sekarang sebelum menjadikannya kebijakan produk.
